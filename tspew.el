@@ -34,13 +34,13 @@
 ;; remember where we are in the buffer
 ;; the compilation filter may give us partial lines, so we have to keep track of how far
 ;; we've come
-(defvar tspew-parse-start nil
+(defvar tspew--parse-start nil
   "Starting point for incremental error parsing." )
 
-;; clear tspew-parse-start each time compilation begins
-(add-hook 'compilation-start-hook (lambda (proc) (setq-local tspew-parse-start nil)))
+;; clear tspew--parse-start each time compilation begins
+(add-hook 'compilation-start-hook (lambda (proc) (setq-local tspew--parse-start nil)))
 
-(defun tspew-handle-type (tstart tend)
+(defun tspew--handle-type (tstart tend)
   "Handle a single type within an error message"
   ;; tstart is position, tend is marker
   (save-excursion
@@ -50,7 +50,7 @@
     (insert-before-markers ":ENDTYPE:"))
   )
 
-(defun tspew-handle-line (lstart lend)
+(defun tspew--handle-line (lstart lend)
   "Process a single line of error output"
   ;; lstart is a position, lend is a marker
   ;; is this an error message with a type?
@@ -64,7 +64,7 @@
           (if (re-search-forward type-regexp lend t)
             (let ((tend (make-marker)))
               (set-marker tend (match-end 1))
-              (tspew-handle-type (match-beginning 1) tend)
+              (tspew--handle-type (match-beginning 1) tend)
             )
         )
       )
@@ -74,23 +74,23 @@
 ;; create a compilation filter hook to incrementally parse errors
 (defun tspew-compilation-filter ()
   "Transform error messages into something prettier."
-  ;; Parse from tspew-parse-start to point, or as close as you can get,
-  ;; updating tspew-parse-start past the last newline we got.
+  ;; Parse from tspew--parse-start to point, or as close as you can get,
+  ;; updating tspew--parse-start past the last newline we got.
   ;; Be sure to use "markers" when necessary, as positions are strictly
   ;; buffer offsets and are not "stable" in the iterator sense
-  (if (not tspew-parse-start)
-      (setq-local tspew-parse-start compilation-filter-start))
-  (while (and (< tspew-parse-start (point))
-              (> (count-lines tspew-parse-start (point)) 1))
+  (if (not tspew--parse-start)
+      (setq-local tspew--parse-start compilation-filter-start))
+  (while (and (< tspew--parse-start (point))
+              (> (count-lines tspew--parse-start (point)) 1))
     ;; we have at least one newline in our working region
     (let ((line-end-marker))
       (save-excursion
-        (goto-char tspew-parse-start)
+        (goto-char tspew--parse-start)
         (forward-line)
         (setq line-end-marker (point-marker)))
       ;; process a single line
-      (tspew-handle-line tspew-parse-start line-end-marker)
-      (setq-local tspew-parse-start (marker-position line-end-marker))))
+      (tspew--handle-line tspew--parse-start line-end-marker)
+      (setq-local tspew--parse-start (marker-position line-end-marker))))
 )
 
 (add-hook 'compilation-filter-hook 'tspew-compilation-filter)
