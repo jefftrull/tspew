@@ -16,7 +16,9 @@
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 (defgroup tspew nil
-  "Display C++ compilation results more cleanly."
+  "Display C++ compilation results more cleanly.
+Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
+"
   :group 'compilation :group 'programming)
 
 ;; BOZO mark things internal properly
@@ -101,6 +103,7 @@
       (progn
         (add-hook 'compilation-start-hook 'tspew--parse-reset)
         (add-hook 'compilation-filter-hook 'tspew--compilation-filter))
+    ;; if we are being toggled off, remove hooks
     (remove-hook 'compilation-start-hook 'tspew--parse-reset)
     (remove-hook 'compilation-filter-hook 'tspew--compilation-filter)))
 
