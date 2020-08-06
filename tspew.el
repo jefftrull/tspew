@@ -31,15 +31,6 @@
 (modify-syntax-entry ?: "_" tspew-syntax-table)
 ;; now we can use (with-symbol-table tspew-syntax-table (movement-fn))
 
-;; remember where we are in the buffer
-;; the compilation filter may give us partial lines, so we have to keep track of how far
-;; we've come
-(defvar tspew--parse-start nil
-  "Starting point for incremental error parsing." )
-
-;; clear tspew--parse-start each time compilation begins
-(add-hook 'compilation-start-hook (lambda (proc) (setq-local tspew--parse-start nil)))
-
 (defun tspew--handle-type (tstart tend)
   "Handle a single type within an error message"
   ;; tstart is position, tend is marker
@@ -71,8 +62,18 @@
     ))
 )
 
+;; remember where we are in the buffer
+;; the compilation filter may give us partial lines, so we have to keep track of how far
+;; we've come
+(defvar tspew--parse-start nil
+  "Starting point for incremental error parsing." )
+
+(defun tspew--parse-reset (proc)
+  "Reset compilation output buffering"
+  (setq-local tspew--parse-start nil))
+
 ;; create a compilation filter hook to incrementally parse errors
-(defun tspew-compilation-filter ()
+(defun tspew--compilation-filter ()
   "Transform error messages into something prettier."
   ;; Parse from tspew--parse-start to point, or as close as you can get,
   ;; updating tspew--parse-start past the last newline we got.
