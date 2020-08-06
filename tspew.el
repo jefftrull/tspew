@@ -94,7 +94,16 @@
       (setq-local tspew--parse-start (marker-position line-end-marker))))
 )
 
-(add-hook 'compilation-filter-hook 'tspew-compilation-filter)
+(define-minor-mode tspew-mode
+  "Toggle tspew (Template Spew) mode"
+  :init-value nil
+  :lighter "TSpew"
+  (if tspew-mode
+      (progn
+        (add-hook 'compilation-start-hook 'tspew--parse-reset)
+        (add-hook 'compilation-filter-hook 'tspew--compilation-filter))
+    (remove-hook 'compilation-start-hook 'tspew--parse-reset)
+    (remove-hook 'compilation-filter-hook 'tspew--compilation-filter)))
 
 ;; BOZO should this be tspew-mode?
 (provide 'tspew)
