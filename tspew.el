@@ -84,14 +84,13 @@
   (while (and (< tspew--parse-start (point))
               (> (count-lines tspew--parse-start (point)) 1))
     ;; we have at least one newline in our working region
-    (let ((line-end-marker))
-      (save-excursion
-        (goto-char tspew--parse-start)
-        (forward-line)
-        (setq line-end-marker (point-marker)))
-      ;; process a single line
-      (tspew--handle-line tspew--parse-start line-end-marker)
-      (setq-local tspew--parse-start (marker-position line-end-marker))))
+    (save-excursion
+      (goto-char tspew--parse-start)
+      (forward-line)
+      (let ((line-end-marker (point-marker)))
+        ;; process a single line
+        (tspew--handle-line tspew--parse-start line-end-marker)
+        (setq-local tspew--parse-start (marker-position line-end-marker)))))
 )
 
 (define-minor-mode tspew-mode
