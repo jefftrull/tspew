@@ -101,8 +101,8 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
   :lighter "TSpew"
   (if tspew-mode
       (progn
-        (add-hook 'compilation-start-hook 'tspew--parse-reset)
-        (add-hook 'compilation-filter-hook 'tspew--compilation-filter))
+        (add-hook 'compilation-start-hook 'tspew--parse-reset nil t)
+        (add-hook 'compilation-filter-hook 'tspew--compilation-filter nil t))
     ;; if we are being toggled off, remove hooks
     (remove-hook 'compilation-start-hook 'tspew--parse-reset)
     (remove-hook 'compilation-filter-hook 'tspew--compilation-filter)))
