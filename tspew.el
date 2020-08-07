@@ -15,6 +15,9 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+(require 'compile)
+(require 'cc-mode)
+
 (defgroup tspew nil
   "Display C++ compilation results more cleanly.
 Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
