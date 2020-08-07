@@ -61,15 +61,18 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
     (save-excursion
       (goto-char lstart)
       (if (looking-at err-regexp)
-          (if (re-search-forward type-regexp lend t)
-            (let ((tend (make-marker)))
-              (set-marker tend (match-end 1))
-              (tspew--handle-type (match-beginning 1) tend)
-            )
-        )
-      )
-    ))
-)
+        ;; while there is still a match remaining in the line:
+        (while (re-search-forward type-regexp lend t)
+          (let ((tend (make-marker)))
+            ;; process this type match
+            (set-marker tend (match-end 2))
+            (tspew--handle-type (match-beginning 2) tend)
+            ;; advance past matched text
+            (goto-char tend)
+            (if (not (equal (point) (point-max)))
+                (forward-char))))
+        ))))
+
 
 ;; remember where we are in the buffer
 ;; the compilation filter may give us partial lines, so we have to keep track of how far
