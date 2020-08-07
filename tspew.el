@@ -17,6 +17,7 @@
 
 (require 'compile)
 (require 'cc-mode)
+(require 's)
 
 (defgroup tspew nil
   "Display C++ compilation results more cleanly.
@@ -36,14 +37,48 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
 (modify-syntax-entry ?: "_" tspew-syntax-table)
 ;; now we can use (with-symbol-table tspew-syntax-table (movement-fn))
 
+(defvar tspew-indent-level c-basic-offset
+  "Indentation amount for types in error messages")
+
+(defvar tspew-default-fill-width 100
+  "Default maximum width of error type display, in columns
+If the compilation window is visible, its width will be used instead")
+
+;; captured initial column width
+(defvar tspew--fill-width nil
+  "Max width in columns for current run")
+
+(defun tspew--handle-indented-type-line (indentation)
+  "Fill and indent a line containing an indented portion of a type"
+  ;; point is after *indentation* spaces
+  ;; if line exceeds window width
+  ;;   mark end of this line
+  ;;   for each split point between point and eol
+  ;;      insert newline and indentation+tspew-indent-level, leaving
+  ;;        point after the indentation
+  ;;      recursive call with new indentation
+  ;;      move to the marker that has the end of the pre-split line
+)
+
 (defun tspew--handle-type (tstart tend)
-  "Handle a single type within an error message"
+  "Fill and indent a single type within an error message"
   ;; tstart is position, tend is marker
   (save-excursion
     (goto-char tstart)
-    (insert ":TYPE:")
-    (goto-char tend)
-    (insert-before-markers ":ENDTYPE:"))
+    (insert "\n")
+    (save-excursion
+      (goto-char tend)
+      (insert "\n"))   ;; tend remains the end of our type
+    ;; point is at the beginning of a line containing a type
+    ;; if this line is too long but contains spaces, line break at spaces
+    (if (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width)
+        (let* ((line-contents (buffer-substring tstart tend))
+               (contents-split (split-string line-contents)))
+          (delete-region tstart tend)
+          (insert (s-join "\n" contents-split))))
+
+    ;; call typew--handle-indented-type-line on each resulting line
+    )
   )
 
 (defun tspew--handle-line (lstart lend)
@@ -53,7 +88,7 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
   (let* ((err-regexp (cadr (assoc 'gnu compilation-error-regexp-alist-alist)))
          ;; types are enclosed by Unicode left and right single quotes
          ;; but sometimes non-type (or function) things are in quotes
-         ;; a prefix is necessary to distinguish these
+         ;; a prefix is necessary to distinguish them
          (type-prefix-regexp "\\(error:\\|warning:\\|member\\|type\\) ")
          (quoted-type-regexp "\u2018\\([]\[[:alnum:]:()<>,&_ ]+\\)\u2019")
          (type-regexp (concat type-prefix-regexp quoted-type-regexp))
@@ -82,7 +117,12 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
 
 (defun tspew--parse-initialize (proc)
   "Reset compilation output buffering"
-  (setq-local tspew--parse-start nil))
+  (setq-local tspew--parse-start nil)
+  (let ((win (get-buffer-window)))
+    (if win
+        (setq-local tspew--fill-width (window-body-width win))
+      (setq-local tspew--fill-width tspew-default-fill-width)))
+  )
 
 ;; create a compilation filter hook to incrementally parse errors
 (defun tspew--compilation-filter ()
