@@ -50,10 +50,14 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
   "Process a single line of error output"
   ;; lstart is a position, lend is a marker
   ;; is this an error message with a type?
-  (let ((err-regexp (cadr (assoc 'gnu compilation-error-regexp-alist-alist)))
-        ;; types are enclosed by Unicode left and right single quotes
-        (type-regexp "\u2018\\([]\[[:alnum:]:()<>,&_ ]+\\)\u2019")
-        )
+  (let* ((err-regexp (cadr (assoc 'gnu compilation-error-regexp-alist-alist)))
+         ;; types are enclosed by Unicode left and right single quotes
+         ;; but sometimes non-type (or function) things are in quotes
+         ;; a prefix is necessary to distinguish these
+         (type-prefix-regexp "\\(error:\\|warning:\\|member\\|type\\) ")
+         (quoted-type-regexp "\u2018\\([]\[[:alnum:]:()<>,&_ ]+\\)\u2019")
+         (type-regexp (concat type-prefix-regexp quoted-type-regexp))
+         )
     (save-excursion
       (goto-char lstart)
       (if (looking-at err-regexp)
