@@ -17,7 +17,6 @@
 
 (require 'compile)
 (require 'cc-mode)
-(require 's)
 
 (defgroup tspew nil
   "Display C++ compilation results more cleanly.
@@ -48,7 +47,7 @@ If the compilation window is visible, its width will be used instead")
 (defvar tspew--fill-width nil
   "Max width in columns for current run")
 
-(defun tspew--handle-indented-type-line (indentation)
+(defun tspew--handle-indented-type-line (line indentation)
   "Fill and indent a line containing an indented portion of a type"
   ;; point is after *indentation* spaces
   ;; if line exceeds window width
@@ -58,6 +57,7 @@ If the compilation window is visible, its width will be used instead")
   ;;        point after the indentation
   ;;      recursive call with new indentation
   ;;      move to the marker that has the end of the pre-split line
+  line
 )
 
 (defun tspew--handle-type (tstart tend)
@@ -65,20 +65,31 @@ If the compilation window is visible, its width will be used instead")
   ;; tstart is position, tend is marker
   (save-excursion
     (goto-char tstart)
-    (insert "\n")
-    (save-excursion
-      (goto-char tend)
-      (insert "\n"))   ;; tend remains the end of our type
-    ;; point is at the beginning of a line containing a type
-    ;; if this line is too long but contains spaces, line break at spaces
     (if (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width)
-        (let* ((line-contents (buffer-substring tstart tend))
-               (contents-split (split-string line-contents)))
-          (delete-region tstart tend)
-          (insert (s-join "\n" contents-split))))
+        ;; the line this type is on exceeds the desired width
+        ;; so we will create a reformatted version
 
-    ;; call typew--handle-indented-type-line on each resulting line
-    )
+        ;; create an overlay covering the type
+        (let ((ov (make-overlay tstart tend))
+              (contents (buffer-substring tstart tend))
+              result)
+          ;; make existing contents invisible
+          (overlay-put ov 'invisible t)
+
+          ;; break lines at spaces within the contents, if any
+          (dolist (line (split-string contents " ") result)
+            ;; then process each resulting line
+            (setq result
+                  (concat result "\n" (tspew--handle-indented-type-line line 0) "\n")))
+
+          ;; join the results and store
+          (overlay-put ov 'before-string result)
+
+          ;; remember overlay
+          ;; I initially kept a list of overlays and used that, but compilation-mode
+          ;; calls kill-all-local-variables, which deletes the buffer-local value
+          ;; of my list. So instead, we use properties:
+          (overlay-put ov 'is-tspew t))))
   )
 
 (defun tspew--handle-line (lstart lend)
@@ -112,16 +123,20 @@ If the compilation window is visible, its width will be used instead")
 ;; remember where we are in the buffer
 ;; the compilation filter may give us partial lines, so we have to keep track of how far
 ;; we've come
-(defvar tspew--parse-start nil
+(defvar-local tspew--parse-start nil
   "Starting point for incremental error parsing." )
 
 (defun tspew--parse-initialize (proc)
-  "Reset compilation output buffering"
-  (setq-local tspew--parse-start nil)
+  "Reset compilation output processing"
+  (setq tspew--parse-start nil)
   (let ((win (get-buffer-window)))
     (if win
         (setq-local tspew--fill-width (window-body-width win))
       (setq-local tspew--fill-width tspew-default-fill-width)))
+  (let ((overlays (seq-filter (lambda (ov) (overlay-get ov 'is-tspew))
+                              (overlays-in (point-min) (point-max)))))
+    (dolist (ov overlays)
+      (delete-overlay ov)))
   )
 
 ;; create a compilation filter hook to incrementally parse errors
