@@ -24,8 +24,6 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
 "
   :group 'compilation :group 'programming)
 
-;; BOZO mark things internal properly
-
 ;; the beginnings of tspew-mode
 ;; first, a syntax table for error messages
 (defvar tspew-syntax-table (standard-syntax-table)
@@ -65,31 +63,30 @@ If the compilation window is visible, its width will be used instead")
   ;; tstart is position, tend is marker
   (save-excursion
     (goto-char tstart)
-    (if (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width)
-        ;; the line this type is on exceeds the desired width
-        ;; so we will create a reformatted version
+    ;; the line this type is on exceeds the desired width
+    ;; so we will create a reformatted version
 
-        ;; create an overlay covering the type
-        (let ((ov (make-overlay tstart tend))
-              (contents (buffer-substring tstart tend))
-              result)
-          ;; make existing contents invisible
-          (overlay-put ov 'invisible t)
+    ;; create an overlay covering the type
+    (let ((ov (make-overlay tstart tend))
+          (contents (buffer-substring tstart tend))
+          result)
+      ;; make existing contents invisible
+      (overlay-put ov 'invisible t)
 
-          ;; break lines at spaces within the contents, if any
-          (dolist (line (split-string contents " ") result)
-            ;; then process each resulting line
-            (setq result
-                  (concat result "\n" (tspew--handle-indented-type-line line 0) "\n")))
+      ;; break lines at spaces within the contents, if any
+      (dolist (line (split-string contents " ") result)
+        ;; then process each resulting line
+        (setq result
+              (concat result "\n" (tspew--handle-indented-type-line line 0) "\n")))
 
-          ;; join the results and store
-          (overlay-put ov 'before-string result)
+      ;; join the results and store
+      (overlay-put ov 'before-string result)
 
-          ;; remember overlay
-          ;; I initially kept a list of overlays and used that, but compilation-mode
-          ;; calls kill-all-local-variables, which deletes the buffer-local value
-          ;; of my list. So instead, we use properties:
-          (overlay-put ov 'is-tspew t))))
+      ;; remember overlay
+      ;; I initially kept a list of overlays and used that, but compilation-mode
+      ;; calls kill-all-local-variables, which deletes the buffer-local value
+      ;; of my list. So instead, we use properties:
+      (overlay-put ov 'is-tspew t)))
   )
 
 (defun tspew--handle-line (lstart lend)
@@ -106,7 +103,9 @@ If the compilation window is visible, its width will be used instead")
          )
     (save-excursion
       (goto-char lstart)
-      (if (looking-at err-regexp)
+      (if (and (looking-at err-regexp)  ;; error line
+               ;; the line is too long
+               (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width))
         ;; while there is still a match remaining in the line:
         (while (re-search-forward type-regexp lend t)
           (let ((tend (make-marker)))
@@ -170,7 +169,8 @@ If the compilation window is visible, its width will be used instead")
         (add-hook 'compilation-filter-hook 'tspew--compilation-filter nil t))
     ;; if we are being toggled off, remove hooks
     (remove-hook 'compilation-start-hook 'tspew--parse-initialize)
-    (remove-hook 'compilation-filter-hook 'tspew--compilation-filter)))
+    (remove-hook 'compilation-filter-hook 'tspew--compilation-filter)
+    (kill-local-variable 'tspew--parse-start)))
 
 ;; BOZO should this be tspew-mode?
 (provide 'tspew)
