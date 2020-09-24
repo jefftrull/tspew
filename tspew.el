@@ -55,17 +55,162 @@ If the compilation window is visible, its width will be used instead")
 (defvar tspew--fill-width nil
   "Max width in columns for current run")
 
-(defun tspew--handle-indented-type-line (line indentation)
-  "Fill and indent a line containing an indented portion of a type"
-  ;; point is after *indentation* spaces
-  ;; if line exceeds window width
-  ;;   mark end of this line
-  ;;   for each split point between point and eol
-  ;;      insert newline and indentation+tspew-indent-level, leaving
-  ;;        point after the indentation
-  ;;      recursive call with new indentation
-  ;;      move to the marker that has the end of the pre-split line
-  line
+;; the "scanner" (front end) part of the system
+(defun tspew--scan (limit)
+  "Scan tokens, supplying length information to the back end"
+  (with-syntax-table tspew-syntax-table
+    ;; tokenize
+    (let* ((start (point))
+           (syntax (char-syntax (char-after)))
+           (tok
+            ;; "consume" (by moving point) and return next token
+            (cl-case syntax
+              (?.
+               ;; punctuation is passed straight through
+               (skip-syntax-forward ".")
+               (let ((punct-end (point)))
+                 ;; skip trailing whitespace
+                 (skip-syntax-forward " ")
+                 (buffer-substring start punct-end)))
+              (?\(
+               ;; supply just the open "paren" (of whatever type)
+               (forward-char)
+               (buffer-substring start (point)))
+              (?\)
+               (forward-char)
+               ;; closing "paren" may be followed by whitespace
+               ;; consume it *if* followed immediately by another closing paren
+               (when (equal (char-syntax (char-after)) ?\s)
+                 (skip-syntax-forward " ")
+                 (when (not (equal (char-syntax (char-after)) ?\)))
+                   ;; NOT another close paren. supply whitespace as next token.
+                   (skip-syntax-backward " ")))
+               (string (char-after start)))
+              (?\s
+               ;; whitespace not following punctuation or closing paren
+               ;; preserve for readability
+               (skip-syntax-forward " ")
+               (buffer-substring start (point)))
+              (t
+               ;; grab the next sexp
+               (forward-sexp)
+               (buffer-substring start (point))))))
+
+      ;; send token to indent/fill engine
+      (tspew--print tok)
+
+      ;; optionally send some control information
+      (cond
+       ((equal tok ",")
+        (tspew--print 'intbrk))    ;; optional newline between elements
+
+       ((equal (char-syntax (string-to-char tok)) ?\()
+        (tspew--print
+         (cons
+          'enter                   ;; beginning of new hierarchy level
+          (-                       ;; supply length
+           ;; locate the end of the parenthesized expression beginning here
+           (save-excursion
+             (backward-char)       ;; start at open "paren"
+             (forward-sexp)        ;; skip over balanced parens
+             (point))
+           (point)))))
+
+       ((equal (char-syntax (string-to-char tok)) ?\))
+        (tspew--print 'exit))))))  ;; exit hierarchy level
+
+;; the "printer" (back end)
+;; maintains a stack reflecting the current indentation level
+(defvar-local tspew--indentation-stack
+  "Maintains the indentation levels in a template parameter hierarchy.
+Each element is a dotted pair of:
+1) the current indentation level in columns
+2) whether we are splitting the elements of this level one per line" )
+
+(defvar-local tspew--indented-result
+  "Accumulates the indented output of the scanner/printer combination" )
+
+(defvar-local tspew--space-remaining
+  "The number of columns remaining before tspew--fill-width" )
+
+;; BOZO add these to init
+
+(defun tspew--print (cmd)
+  "\"print\" tokens while maintaining appropriate indentation"
+  (cl-typecase cmd
+    (string
+        (message (format "string: %s" cmd))
+         ;; append and update column counter
+         (setq tspew--indented-result
+               (concat tspew--indented-result cmd))
+         (setq tspew--space-remaining (- tspew--space-remaining
+                                         (length cmd))))
+
+    (cons        ;; an "enter" - push mode for this level
+     (message "cons")
+         (let ((len (cdr cmd))
+               (indentation (cdar tspew--indentation-stack)))
+           (if (or (< len tspew--space-remaining)
+                   (equal len 1))   ;; trivial (empty) parens
+               (progn
+                 (message (format "enough room: len %d vs. space remaining %d"
+                                  len tspew--space-remaining))
+                 ;; there is room enough to print the rest of this sexp
+                 (setq tspew--space-remaining (- tspew--space-remaining len))
+                 ;; don't require line breaks
+                 (push (cons 'no-break indentation) tspew--indentation-stack)
+                 )
+             (setq indentation (+ indentation tspew-indent-level))
+             ;; new space remaining: whatever is left after indentation
+             (setq tspew--space-remaining (- tspew--fill-width indentation))
+             ;; require elements at this level to break/indent
+             (push (cons 'break indentation) tspew--indentation-stack)
+             ;; output break and indent
+             (setq tspew--indented-result
+                   (concat tspew--indented-result
+                           "\n"
+                           (make-string indentation ?\s)))
+             )))
+
+    (symbol
+     (cl-case cmd
+
+       ('exit
+        (message "exit")
+        ;; BOZO
+        ;; here I used to add another newline if we were previously breaking in between
+        ;; the purpose AFAICT was to ensure "decltype" got its own line break
+        ;; unfortunately this means we don't get ">>>" etc. at the end of nested parens
+        ;; so we need another solution for this case
+        (pop tspew--indentation-stack))
+
+       ('intbrk
+        (message "intbrk")
+        (when (equal (caar tspew--indentation-stack) 'break)
+          ;; we have a sequence element and previously decided to split one per line
+          ;; break and indent to current level (for a new sequence element)
+          (setq tspew--space-remaining (- tspew--fill-width (cdar tspew--indentation-stack)))
+          (setq tspew--indented-result
+                (concat tspew--indented-result
+                        "\n"
+                        (make-string (cdar tspew--indentation-stack) ?\s)))))))
+     ))
+
+(defun tspew--handle-type-region (start end)
+  "Fill and indent region containing a type or part of a function"
+
+  ;; initialize indent+fill machinery
+  (setq tspew--indentation-stack '((no-break . 0)))  ;; current indent level info
+  (setq tspew--space-remaining tspew--fill-width)    ;; tracking horizontal space
+  (setq tspew--indented-result "")                   ;; the result
+
+  ;; send one token at a time, inserting indentation and line breaks as required
+  (save-excursion
+    (while (not (equal (point) end))
+      (assert (<= (point) end))
+      (tspew--scan end)))
+
+  tspew--indented-result
 )
 
 (defun tspew--handle-type (tstart tend)
@@ -77,18 +222,24 @@ If the compilation window is visible, its width will be used instead")
 
     ;; create an overlay covering the type
     (let ((ov (make-overlay tstart tend))
-          (contents (buffer-substring tstart tend))
-          result)
+          (result "\n"))
+
+      ;; break lines at spaces within the contents, if any (i.e. function signature)
+      (while (not (equal tstart tend))
+        ;; chunk ends either before the first space separating parts of a function, or at tend
+        (let* ((spacepos (save-excursion
+                          (search-forward " [^>]" tend t))) ;; don't match C++03 "> > >" etc.
+               (tint (if spacepos (- spacepos 1) tend)))
+          ;; fill and indent
+          (setq result
+                (concat result (tspew--handle-type-region tstart tint) "\n"))
+          ;; update tstart to the next type
+          (setq tstart (or spacepos tend))))
+
       ;; make existing contents invisible
       (overlay-put ov 'invisible t)
 
-      ;; break lines at spaces within the contents, if any
-      (dolist (line (split-string contents " ") result)
-        ;; then process each resulting line
-        (setq result
-              (concat result "\n" (tspew--handle-indented-type-line line 0) "\n")))
-
-      ;; join the results and store
+      ;; display indented and filled types in place of the original
       (overlay-put ov 'before-string result)
 
       ;; remember overlay
