@@ -28,11 +28,21 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
 ;; first, a syntax table for error messages
 (defvar tspew-syntax-table (standard-syntax-table)
   "Syntax table for lexing compiler errors" )
+;; modify to suit our needs
+;; BOZO may be unnecessary - default syntax table appears to do these things already:
+;; left and right angle brackets are a kind of parentheses in type names
 (modify-syntax-entry ?< "(>" tspew-syntax-table)
 (modify-syntax-entry ?> ")<" tspew-syntax-table)
-;; tell it colon is a "symbol constituent" - though we really only want double colons...
+;; colon is a "symbol constituent" - usable in identifiers
 (modify-syntax-entry ?: "_" tspew-syntax-table)
 ;; now we can use (with-symbol-table tspew-syntax-table (movement-fn))
+
+;; we need a grammar for several reasons:
+;; 1) to resolve the fact that angle brackets may appear in operator overloads
+;; 2) for iterating over template parameters I want "XXX<YYY>" to be a single item
+;;    e.g. <int, std::allocator<int>> should be an sexp of length 2, not 3,
+;;    with elements "int" and "std::allocator<int>"
+;;    - although maybe this is OK? We have to stop before emitting "<" anyway
 
 (defvar tspew-indent-level c-basic-offset
   "Indentation amount for types in error messages")
@@ -83,7 +93,7 @@ If the compilation window is visible, its width will be used instead")
       (overlay-put ov 'before-string result)
 
       ;; remember overlay
-      ;; I initially kept a list of overlays and used that, but compilation-mode
+      ;; [JET] I initially kept a list of overlays and used that, but compilation-mode
       ;; calls kill-all-local-variables, which deletes the buffer-local value
       ;; of my list. So instead, we use properties:
       (overlay-put ov 'is-tspew t)))
