@@ -114,7 +114,7 @@ If the compilation window is visible, its width will be used instead")
             (tspew--handle-type (match-beginning 2) tend)
             ;; advance past matched text
             (goto-char tend)
-            (if (not (equal (point) (point-max)))
+            (if (not (eobp))
                 (forward-char))))
         ))))
 
