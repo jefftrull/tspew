@@ -70,7 +70,6 @@ If the compilation window is visible, its width will be used instead")
 
 (defun tspew--handle-type (tstart tend)
   "Fill and indent a single type within an error message"
-  ;; tstart is position, tend is marker
   (save-excursion
     (goto-char tstart)
     ;; the line this type is on exceeds the desired width
@@ -107,8 +106,12 @@ If the compilation window is visible, its width will be used instead")
          ;; types are enclosed by Unicode left and right single quotes
          ;; but sometimes non-type (or function) things are in quotes
          ;; a prefix is necessary to distinguish them
-         (type-prefix-regexp "\\(error:\\|warning:\\|member\\|type\\) ")
-         (quoted-type-regexp "\u2018\\([]\[[:alnum:]:()<>,&_ ]+\\)\u2019")
+
+         ;; experiment: forget about the prefix. Any quoted expression is a type...?
+         ;; (type-prefix-regexp "\\(?:error:\\|warning:\\|member\\|type\\|note:\\)[ ]+")
+         (type-prefix-regexp "")
+         ;; some surprising things can be in type names, because of "operator"
+         (quoted-type-regexp "\u2018\\([]\[[:alnum:]:()<>,&_ =+/*%^.-]+\\)\u2019")
          (type-regexp (concat type-prefix-regexp quoted-type-regexp))
          )
     (save-excursion
@@ -118,10 +121,9 @@ If the compilation window is visible, its width will be used instead")
                (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width))
         ;; while there is still a match remaining in the line:
         (while (re-search-forward type-regexp lend t)
-          (let ((tend (make-marker)))
+          (let ((tend (match-end 1)))
             ;; process this type match
-            (set-marker tend (match-end 2))
-            (tspew--handle-type (match-beginning 2) tend)
+            (tspew--handle-type (match-beginning 1) tend)
             ;; advance past matched text
             (goto-char tend)
             (if (not (eobp))
