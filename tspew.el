@@ -156,7 +156,6 @@ Each element is a dotted pair of:
                  (message (format "enough room: len %d vs. space remaining %d"
                                   len tspew--space-remaining))
                  ;; there is room enough to print the rest of this sexp
-                 (setq tspew--space-remaining (- tspew--space-remaining len))
                  ;; don't require line breaks
                  (push (cons 'no-break indentation) tspew--indentation-stack)
                  )
