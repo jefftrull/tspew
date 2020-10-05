@@ -56,7 +56,7 @@ If the compilation window is visible, its width will be used instead")
   "Max width in columns for current run")
 
 ;; the "scanner" (front end) part of the system
-(defun tspew--scan (limit)
+(defun tspew--scan ()
   "Scan tokens, supplying length information to the back end"
   (with-syntax-table tspew-syntax-table
     ;; tokenize
@@ -207,7 +207,7 @@ Each element is a dotted pair of:
   (save-excursion
     (while (not (equal (point) end))
       (assert (<= (point) end))
-      (tspew--scan end)))
+      (tspew--scan)))
 
   tspew--indented-result
 )
