@@ -292,9 +292,8 @@ Each element is a dotted pair of:
   "Reset compilation output processing"
   (setq tspew--parse-start nil)
   (let ((win (get-buffer-window)))
-    (if win
-        (setq-local tspew--fill-width (window-body-width win))
-      (setq-local tspew--fill-width tspew-default-fill-width)))
+    (setq-local tspew--fill-width
+                (if win (window-body-width win) tspew-default-fill-width)))
   (let ((overlays (seq-filter (lambda (ov) (overlay-get ov 'is-tspew))
                               (overlays-in (point-min) (point-max)))))
     (dolist (ov overlays)
