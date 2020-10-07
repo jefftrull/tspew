@@ -203,8 +203,9 @@ Each element is a dotted pair of:
                         (make-string (cdar tspew--indentation-stack) ?\s)))))))
      ))
 
-(defun tspew--handle-type-region (start end)
-  "Fill and indent region containing a type or part of a function"
+(defun tspew--handle-type-region (end)
+  "Fill and indent region starting at point containing a type
+or part of a function."
 
   ;; initialize indent+fill machinery
   (setq tspew--indentation-stack '((no-break . 0)))  ;; current indent level info
@@ -265,7 +266,7 @@ Leaves point at the start of the chunk."
         (let ((tint (tspew--next-type-chunk tend)))
          ;; fill and indent
           (setq result
-                (concat result (tspew--handle-type-region tstart tint) "\n"))
+                (concat result (tspew--handle-type-region tint) "\n"))
           ;; update tstart to the next type chunk
           (setq tstart tint)))
 
