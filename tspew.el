@@ -55,6 +55,12 @@ If the compilation window is visible, its width will be used instead")
 (defvar tspew--fill-width nil
   "Max width in columns for current run")
 
+;; here I try to implement a two-part pretty-printing system (that is,
+;; both indentation and "fill") as described in a paper by Rose and Welsh
+;; (1981), which is paywalled, but there is a nice description of it and
+;; related work in "the PretzelBook", see
+;; http://www.literateprogramming.com/pretzelbook.pdf
+
 ;; the "scanner" (front end) part of the system
 (defun tspew--scan ()
   "Scan tokens, supplying length information to the back end"
@@ -105,10 +111,12 @@ If the compilation window is visible, its width will be used instead")
         (tspew--print 'intbrk))    ;; optional newline between elements
 
        ((equal (char-syntax (string-to-char tok)) ?\()
+        ;; we just entered a parenthesized expression
         (tspew--print
          (cons
           'enter                   ;; beginning of new hierarchy level
           (-                       ;; supply length
+           ;; (this calculation will be pessimistic by the amount of whitespace)
            ;; locate the end of the parenthesized expression beginning here
            (save-excursion
              (backward-char)       ;; start at open "paren"
