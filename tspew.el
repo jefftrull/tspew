@@ -212,6 +212,26 @@ Each element is a dotted pair of:
   tspew--indented-result
 )
 
+(defun tspew--next-type-chunk (limit)
+  "Return the end of the next portion of a type, or limit if none.
+Leaves point at the start of the chunk."
+  (skip-syntax-forward " ")
+  (if (equal (point) limit)
+      limit
+    (save-excursion
+      (when (looking-at "decltype\\|const")
+        (forward-word)
+        (skip-syntax-forward " "))
+      (with-syntax-table tspew-syntax-table
+        (if (equal (point) limit)
+            limit
+          (forward-sexp)
+          ;; grab following parenthesized expression, if any
+          (if (equal (char-syntax (char-after)) ?\()
+              (forward-sexp))))
+      (point)))
+)
+
 (defun tspew--handle-type (tstart tend)
   "Fill and indent a single type within an error message"
   (save-excursion
@@ -223,17 +243,23 @@ Each element is a dotted pair of:
           (result "\n"))
 
       ;; break lines at spaces within the contents, if any (i.e. function signature)
+      ;; break lines at "chunk boundaries" within the contents, if any (such as in a function signature)
+      ;; those are spaces between major sections of a function signature, like "decltype (...)"
+      ;; that are best placed on a separate line for readability
       (while (not (equal tstart tend))
-        ;; chunk ends either before the first space separating parts of a function, or at tend
-        (let* ((spacepos (save-excursion
-                          (search-forward " [^>]" tend t))) ;; don't match C++03 "> > >" etc.
-               (tint (if spacepos (- spacepos 1) tend)))
         (goto-char tstart)
-          ;; fill and indent
+        ;; chunk ends after the first sexp that's followed by a chunk boundary
+        ;; (let* ((tint (save-excursion
+        ;;                (while (not (or (looking-at tspew--type-chunk-re)
+        ;;                                (equal (point) tend)))
+        ;;                  (with-syntax-table tspew-syntax-table (forward-sexp)))
+        ;;                (point))))
+        (let ((tint (tspew--next-type-chunk tend)))
+         ;; fill and indent
           (setq result
                 (concat result (tspew--handle-type-region tstart tint) "\n"))
-          ;; update tstart to the next type chunk (skipping the chunk separator initial space)
-          (setq tstart (if (equal tint tend) tend (+ tint 1)))))
+          ;; update tstart to the next type chunk
+          (setq tstart tint)))
 
       ;; make existing contents invisible
       (overlay-put ov 'invisible t)
