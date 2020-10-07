@@ -215,7 +215,6 @@ Each element is a dotted pair of:
 (defun tspew--handle-type (tstart tend)
   "Fill and indent a single type within an error message"
   (save-excursion
-    (goto-char tstart)
     ;; the line this type is on exceeds the desired width
     ;; so we will create a reformatted version
 
@@ -229,6 +228,7 @@ Each element is a dotted pair of:
         (let* ((spacepos (save-excursion
                           (search-forward " [^>]" tend t))) ;; don't match C++03 "> > >" etc.
                (tint (if spacepos (- spacepos 1) tend)))
+        (goto-char tstart)
           ;; fill and indent
           (setq result
                 (concat result (tspew--handle-type-region tstart tint) "\n"))
