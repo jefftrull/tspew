@@ -232,8 +232,8 @@ Each element is a dotted pair of:
           ;; fill and indent
           (setq result
                 (concat result (tspew--handle-type-region tstart tint) "\n"))
-          ;; update tstart to the next type
-          (setq tstart (or spacepos tend))))
+          ;; update tstart to the next type chunk (skipping the chunk separator initial space)
+          (setq tstart (if (equal tint tend) tend (+ tint 1)))))
 
       ;; make existing contents invisible
       (overlay-put ov 'invisible t)
