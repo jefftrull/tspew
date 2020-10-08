@@ -251,24 +251,19 @@ Leaves point at the start of the chunk."
     (let ((ov (make-overlay tstart tend))
           (result "\n"))
 
-      ;; break lines at spaces within the contents, if any (i.e. function signature)
       ;; break lines at "chunk boundaries" within the contents, if any (such as in a function signature)
       ;; those are spaces between major sections of a function signature, like "decltype (...)"
       ;; that are best placed on a separate line for readability
-      (while (not (equal tstart tend))
-        (goto-char tstart)
-        ;; chunk ends after the first sexp that's followed by a chunk boundary
-        ;; (let* ((tint (save-excursion
-        ;;                (while (not (or (looking-at tspew--type-chunk-re)
-        ;;                                (equal (point) tend)))
-        ;;                  (with-syntax-table tspew-syntax-table (forward-sexp)))
-        ;;                (point))))
+      (goto-char tstart)
+      (while (not (equal (point) tend))
+        ;; get the next chunk (point through tint)
         (let ((tint (tspew--next-type-chunk tend)))
          ;; fill and indent
+          (message (format "chunk extends from %d to %d (end %d)" tstart tint tend))
           (setq result
                 (concat result (tspew--handle-type-region tint) "\n"))
-          ;; update tstart to the next type chunk
-          (setq tstart tint)))
+          (goto-char tint)
+          ))
 
       ;; make existing contents invisible
       (overlay-put ov 'invisible t)
