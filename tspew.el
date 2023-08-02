@@ -275,10 +275,10 @@ within an error message)"
          ;; fill and indent
           (message (format "chunk extends from %d to %d (end %d)" tstart tint tend))
           (setq result
-                (concat result (tspew--handle-type-region tint) "\n"))
+                (concat result (tspew--handle-type-region tint)))
           (goto-char tint)
           ))
-      result)))
+      (concat result "\n"))))
 
 (defun tspew--handle-type (tstart tend)
   "Fill and indent a single type within an error message"
