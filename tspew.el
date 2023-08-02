@@ -1,3 +1,4 @@
+`;; -*- lexical-binding: t; -*-
 ;;; tspew.el --- Clean and format "template spew" errors from gcc and Clang
 
 ;; Author: Jeff Trull <edaskel@att.net>
@@ -67,7 +68,7 @@ If the compilation window is visible, its width will be used instead")
 ;; http://www.literateprogramming.com/pretzelbook.pdf
 
 ;; the "scanner" (front end) part of the system
-(defun tspew--scan ()
+(defun tspew--scan (printer)
   "Scan tokens, supplying length information to the back end"
   (with-syntax-table tspew-syntax-table
     ;; tokenize
@@ -108,7 +109,7 @@ If the compilation window is visible, its width will be used instead")
                (buffer-substring start (point))))))
 
       ;; send token to indent/fill engine
-      (tspew--print tok)
+      (funcall printer tok)
 
       ;; optionally send some control information
       ;; we send three kinds:
@@ -118,11 +119,11 @@ If the compilation window is visible, its width will be used instead")
 
       (cond
        ((equal tok ",")
-        (tspew--print 'intbrk))    ;; optional newline between elements
+        (funcall printer 'intbrk))    ;; optional newline between elements
 
        ((equal (char-syntax (string-to-char tok)) ?\()
         ;; we just entered a parenthesized expression
-        (tspew--print
+        (funcall printer
          (cons
           'enter                   ;; beginning of new hierarchy level
           (-                       ;; supply length
@@ -135,26 +136,21 @@ If the compilation window is visible, its width will be used instead")
            (point)))))
 
        ((equal (char-syntax (string-to-char tok)) ?\))
-        (tspew--print 'exit))))))  ;; exit hierarchy level
+        (funcall printer 'exit))))))  ;; exit hierarchy level
 
 ;; the "printer" (back end)
-;; maintains a stack reflecting the current indentation level
-(defvar-local tspew--indentation-stack
-  "Maintains the indentation levels in a template parameter hierarchy.
-Each element is a dotted pair of:
-1) the current indentation level in columns
-2) whether we are splitting the elements of this level one per line" )
 
-(defvar-local tspew--indented-result
-  "Accumulates the indented output of the scanner/printer combination" )
+(defun tspew--printer ()
+  "Return a closure to \"print\" tokens while maintaining appropriate indentation"
+  (let
+      ((indentation-stack '((no-break . 0)))  ;; current indent level info
+       ;; Each element is a dotted pair of:
+       ;; 1) the current indentation level in columns
+       ;; 2) whether we are splitting the elements of this level one per line
+       (space-remaining tspew--fill-width)    ;; tracking horizontal space
+       (indented-result ""))                  ;; accumulated formatted text
+  (lambda (cmd)
 
-(defvar-local tspew--space-remaining
-  "The number of columns remaining before tspew--fill-width" )
-
-;; BOZO add these to init
-
-(defun tspew--print (cmd)
-  "\"print\" tokens while maintaining appropriate indentation"
   ;; the printer maintains the current indentation level and decides when it's
   ;; necessary to start putting out sequence elements on separate lines.
   ;; It maintains a stack of ('brksym . indent) pairs giving for each level
@@ -165,39 +161,40 @@ Each element is a dotted pair of:
      ;; a plain token to output unconditionally
      (message (format "string: %s" cmd))
      ;; append and update column counter
-     (setq tspew--indented-result
-           (concat tspew--indented-result cmd))
-     (setq tspew--space-remaining (- tspew--space-remaining
-                                     (length cmd))))
+     (setq indented-result
+           (concat indented-result cmd))
+     (setq space-remaining (- space-remaining (length cmd))))
 
     (cons        ;; an "enter" - push mode for this level
      (cl-assert (equal (car cmd) 'enter))
      (message "cons")
      (let ((len (cdr cmd))
-           (indentation (cdar tspew--indentation-stack)))
-       (if (or (< len tspew--space-remaining)
+           (indentation (cdar indentation-stack)))
+       (if (or (< len space-remaining)
                (equal len 1))   ;; trivial (empty) parens
            (progn
              (message (format "enough room: len %d vs. space remaining %d"
-                              len tspew--space-remaining))
+                              len space-remaining))
              ;; there is room enough to print the rest of this sexp
              ;; don't require line breaks
-             (push (cons 'no-break indentation) tspew--indentation-stack)
+             (push (cons 'no-break indentation) indentation-stack)
              )
          (setq indentation (+ indentation tspew-indent-level))
          ;; new space remaining: whatever is left after indentation
-         (setq tspew--space-remaining (- tspew--fill-width indentation))
+         (setq space-remaining (- space-remaining indentation))
          ;; require elements at this level to break/indent
-         (push (cons 'break indentation) tspew--indentation-stack)
+         (push (cons 'break indentation) indentation-stack)
          ;; output line break and indent
-         (setq tspew--indented-result
-               (concat tspew--indented-result
+         (setq indented-result
+               (concat indented-result
                        "\n"
                        (make-string indentation ?\s)))
          )))
 
     (symbol
      (cl-case cmd
+
+       ('result indented-result)     ;; for accessing accumulated text
 
        ('exit
         (message "exit")
@@ -206,37 +203,35 @@ Each element is a dotted pair of:
         ;; the purpose AFAICT was to ensure "decltype" got its own line break
         ;; unfortunately this means we don't get ">>>" etc. at the end of nested parens
         ;; so we need another solution for this case
-        (pop tspew--indentation-stack))
+        (pop indentation-stack))
 
        ('intbrk
         (message "intbrk")
-        (when (equal (caar tspew--indentation-stack) 'break)
+        (when (equal (caar indentation-stack) 'break)
           ;; we have a sequence element and previously decided to split one per line
           ;; break and indent to current level (for a new sequence element)
-          (setq tspew--space-remaining (- tspew--fill-width (cdar tspew--indentation-stack)))
-          (setq tspew--indented-result
-                (concat tspew--indented-result
+          (setq space-remaining (- space-remaining (cdar indentation-stack)))
+          (setq indented-result
+                (concat indented-result
                         "\n"
-                        (make-string (cdar tspew--indentation-stack) ?\s)))))))
-     ))
+                        (make-string (cdar indentation-stack) ?\s)))))))
+    ))))
 
 (defun tspew--handle-type-region (end)
   "Fill and indent region starting at point containing a type
 or part of a function."
 
-  ;; initialize indent+fill machinery
-  (setq tspew--indentation-stack '((no-break . 0)))  ;; current indent level info
-  (setq tspew--space-remaining tspew--fill-width)    ;; tracking horizontal space
-  (setq tspew--indented-result "")                   ;; the result
+  (let* ((indented-result "")
+         (printer (tspew--printer)))
 
   ;; send one token at a time, inserting indentation and line breaks as required
   (save-excursion
     (while (not (equal (point) end))
       (cl-assert (<= (point) end))
-      (tspew--scan)))
+      (tspew--scan printer)))
 
-  tspew--indented-result
-)
+  (funcall printer 'result)))
+
 
 (defun tspew--next-type-chunk (limit)
   "Return the end of the next portion of a type, or limit if none.
