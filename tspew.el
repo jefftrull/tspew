@@ -87,7 +87,7 @@ If the compilation window is visible, its width will be used instead")
                (forward-char)
                ;; closing "paren" may be followed by whitespace
                ;; consume it *if* followed immediately by another closing paren
-               (when (equal (char-syntax (char-after)) ?\s)
+               (when (and (not (eobp)) (equal (char-syntax (char-after)) ?\s))
                  (skip-syntax-forward " ")
                  (when (not (equal (char-syntax (char-after)) ?\)))
                    ;; NOT another close paren. supply whitespace as next token.
@@ -249,7 +249,7 @@ Leaves point at the start of the chunk."
             limit
           (forward-sexp)
           ;; grab following parenthesized expression, if any
-          (if (equal (char-syntax (char-after)) ?\()
+          (if (and (not (equal (point) limit)) (equal (char-syntax (char-after)) ?\())
               (forward-sexp))))
       (point)))
 )
