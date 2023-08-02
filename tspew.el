@@ -36,6 +36,10 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
 (modify-syntax-entry ?> ")<" tspew-syntax-table)
 ;; colon is a "symbol constituent" - usable in identifiers
 (modify-syntax-entry ?: "_" tspew-syntax-table)
+;; & and * can be present after any type. symbol constituent seems right
+(modify-syntax-entry ?& "_" tspew-syntax-table)
+(modify-syntax-entry ?* "_" tspew-syntax-table)
+
 ;; now we can use (with-symbol-table tspew-syntax-table (movement-fn))
 
 ;; we need a grammar for several reasons:
