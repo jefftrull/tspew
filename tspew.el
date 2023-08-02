@@ -333,9 +333,7 @@ within an error message)"
 (defvar-local tspew--parse-start nil
   "Starting point for incremental error parsing." )
 
-(defun tspew--parse-initialize (proc)
-  "Reset compilation output processing"
-  (setq tspew--parse-start nil)
+(defun tspew--remove-overlays ()
   (let ((win (get-buffer-window)))
     (setq-local tspew--fill-width
                 (if win (window-body-width win) tspew-default-fill-width)))
@@ -343,6 +341,13 @@ within an error message)"
                               (overlays-in (point-min) (point-max)))))
     (dolist (ov overlays)
       (delete-overlay ov)))
+  )
+
+(defun tspew--parse-initialize (proc)
+  "Reset compilation output processing"
+
+  (tspew--remove-overlays)
+  (setq tspew--parse-start nil)
   )
 
 ;; create a compilation filter hook to incrementally parse errors
