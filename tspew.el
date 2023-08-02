@@ -338,9 +338,6 @@ within an error message)"
   "Starting point for incremental error parsing." )
 
 (defun tspew--remove-overlays ()
-  (let ((win (get-buffer-window)))
-    (setq-local tspew--fill-width
-                (if win (window-body-width win) tspew-default-fill-width)))
   (let ((overlays (seq-filter (lambda (ov) (overlay-get ov 'is-tspew))
                               (overlays-in (point-min) (point-max)))))
     (dolist (ov overlays)
@@ -349,6 +346,10 @@ within an error message)"
 
 (defun tspew--parse-initialize (proc)
   "Reset compilation output processing"
+
+  (let ((win (get-buffer-window)))
+    (setq-local tspew--fill-width
+                (if win (window-body-width win) tspew-default-fill-width)))
 
   (tspew--remove-overlays)
   (setq tspew--parse-start nil)
