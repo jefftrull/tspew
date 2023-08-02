@@ -148,38 +148,38 @@ Each element is a dotted pair of:
   "\"print\" tokens while maintaining appropriate indentation"
   (cl-typecase cmd
     (string
-        (message (format "string: %s" cmd))
-         ;; append and update column counter
-         (setq tspew--indented-result
-               (concat tspew--indented-result cmd))
-         (setq tspew--space-remaining (- tspew--space-remaining
-                                         (length cmd))))
+     (message (format "string: %s" cmd))
+     ;; append and update column counter
+     (setq tspew--indented-result
+           (concat tspew--indented-result cmd))
+     (setq tspew--space-remaining (- tspew--space-remaining
+                                     (length cmd))))
 
     (cons        ;; an "enter" - push mode for this level
      (cl-assert (equal (car cmd) 'enter))
      (message "cons")
-         (let ((len (cdr cmd))
-               (indentation (cdar tspew--indentation-stack)))
-           (if (or (< len tspew--space-remaining)
-                   (equal len 1))   ;; trivial (empty) parens
-               (progn
-                 (message (format "enough room: len %d vs. space remaining %d"
-                                  len tspew--space-remaining))
-                 ;; there is room enough to print the rest of this sexp
-                 ;; don't require line breaks
-                 (push (cons 'no-break indentation) tspew--indentation-stack)
-                 )
-             (setq indentation (+ indentation tspew-indent-level))
-             ;; new space remaining: whatever is left after indentation
-             (setq tspew--space-remaining (- tspew--fill-width indentation))
-             ;; require elements at this level to break/indent
-             (push (cons 'break indentation) tspew--indentation-stack)
-             ;; output break and indent
-             (setq tspew--indented-result
-                   (concat tspew--indented-result
-                           "\n"
-                           (make-string indentation ?\s)))
-             )))
+     (let ((len (cdr cmd))
+           (indentation (cdar tspew--indentation-stack)))
+       (if (or (< len tspew--space-remaining)
+               (equal len 1))   ;; trivial (empty) parens
+           (progn
+             (message (format "enough room: len %d vs. space remaining %d"
+                              len tspew--space-remaining))
+             ;; there is room enough to print the rest of this sexp
+             ;; don't require line breaks
+             (push (cons 'no-break indentation) tspew--indentation-stack)
+             )
+         (setq indentation (+ indentation tspew-indent-level))
+         ;; new space remaining: whatever is left after indentation
+         (setq tspew--space-remaining (- tspew--fill-width indentation))
+         ;; require elements at this level to break/indent
+         (push (cons 'break indentation) tspew--indentation-stack)
+         ;; output line break and indent
+         (setq tspew--indented-result
+               (concat tspew--indented-result
+                       "\n"
+                       (make-string indentation ?\s)))
+         )))
 
     (symbol
      (cl-case cmd
