@@ -254,16 +254,13 @@ Leaves point at the start of the chunk."
       (point)))
 )
 
-(defun tspew--handle-type (tstart tend)
-  "Fill and indent a single type within an error message"
+(defun tspew--handle-chunks (tstart tend)
+  "Fill and indent a series of \"chunks\" (whitespace-separated bits of a quoted type expression
+within an error message)"
   (save-excursion
     ;; the line this type is on exceeds the desired width
     ;; so we will create a reformatted version
-
-    ;; create an overlay covering the type
-    (let ((ov (make-overlay tstart tend))
-          (result "\n"))
-
+    (let ((result "\n"))
       ;; break lines at "chunk boundaries" within the contents, if any (such as in a function signature)
       ;; those are spaces between major sections of a function signature, like "decltype (...)"
       ;; that are best placed on a separate line for readability
@@ -277,6 +274,13 @@ Leaves point at the start of the chunk."
                 (concat result (tspew--handle-type-region tint) "\n"))
           (goto-char tint)
           ))
+      result)))
+
+(defun tspew--handle-type (tstart tend)
+  "Fill and indent a single type within an error message"
+    ;; create an overlay covering the type
+  (let ((ov (make-overlay tstart tend))
+        (result (tspew--handle-chunks tstart tend)))
 
       ;; make existing contents invisible
       (overlay-put ov 'invisible t)
@@ -289,7 +293,6 @@ Leaves point at the start of the chunk."
       ;; calls kill-all-local-variables, which deletes the buffer-local value
       ;; of my list. So instead, we use properties:
       (overlay-put ov 'is-tspew t)))
-  )
 
 (defun tspew--handle-line (lstart lend)
   "Process a single line of error output"
