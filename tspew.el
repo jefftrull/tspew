@@ -107,6 +107,11 @@ If the compilation window is visible, its width will be used instead")
       (tspew--print tok)
 
       ;; optionally send some control information
+      ;; we send three kinds:
+      ;; "internal break" - a spot to put a newline in between sequential elements, if needed
+      ;; "enter hierarchy" - a parenthesized expression begins of specified length
+      ;; "exit hierarchy" - a parenthesized expression ends
+
       (cond
        ((equal tok ",")
         (tspew--print 'intbrk))    ;; optional newline between elements
@@ -146,8 +151,14 @@ Each element is a dotted pair of:
 
 (defun tspew--print (cmd)
   "\"print\" tokens while maintaining appropriate indentation"
+  ;; the printer maintains the current indentation level and decides when it's
+  ;; necessary to start putting out sequence elements on separate lines.
+  ;; It maintains a stack of ('brksym . indent) pairs giving for each level
+  ;; what the amount of indentation is and whether we are currently breaking
+  ;; up the sequence with newlines
   (cl-typecase cmd
     (string
+     ;; a plain token to output unconditionally
      (message (format "string: %s" cmd))
      ;; append and update column counter
      (setq tspew--indented-result
@@ -351,6 +362,15 @@ Leaves point at the start of the chunk."
         (tspew--handle-line tspew--parse-start line-end-marker)
         (setq-local tspew--parse-start (marker-position line-end-marker)))))
 )
+
+;; TSpew is a minor mode for compilation buffers, not source code
+;; To use it you need to enable it after a compilation buffer is created,
+;; and they are not created until compilation begins. So you must tell
+;; compilation-mode to do it for you using compilation-mode-hook.
+;; For example:
+;; (add-hook 'compilation-mode-hook 'tspew-mode)
+;; will enable tspew for all compiles. You may prefer to restrict it to
+;; certain projects instead by writing your own hook.
 
 (define-minor-mode tspew-mode
   "Toggle tspew (Template Spew) mode"
