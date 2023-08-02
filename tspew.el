@@ -149,73 +149,73 @@ If the compilation window is visible, its width will be used instead")
        ;; 2) whether we are splitting the elements of this level one per line
        (space-remaining tspew--fill-width)    ;; tracking horizontal space
        (indented-result ""))                  ;; accumulated formatted text
-  (lambda (cmd)
+    (lambda (cmd)
 
-  ;; the printer maintains the current indentation level and decides when it's
-  ;; necessary to start putting out sequence elements on separate lines.
-  ;; It maintains a stack of ('brksym . indent) pairs giving for each level
-  ;; what the amount of indentation is and whether we are currently breaking
-  ;; up the sequence with newlines
-  (cl-typecase cmd
-    (string
-     ;; a plain token to output unconditionally
-     (message (format "string: %s" cmd))
-     ;; append and update column counter
-     (setq indented-result
-           (concat indented-result cmd))
-     (setq space-remaining (- space-remaining (length cmd))))
-
-    (cons        ;; an "enter" - push mode for this level
-     (cl-assert (equal (car cmd) 'enter))
-     (message "cons")
-     (let ((len (cdr cmd))
-           (indentation (cdar indentation-stack)))
-       (if (or (< len space-remaining)
-               (equal len 1))   ;; trivial (empty) parens
-           (progn
-             (message (format "enough room: len %d vs. space remaining %d"
-                              len space-remaining))
-             ;; there is room enough to print the rest of this sexp
-             ;; don't require line breaks
-             (push (cons 'no-break indentation) indentation-stack)
-             )
-         (setq indentation (+ indentation tspew-indent-level))
-         ;; new space remaining: whatever is left after indentation
-         (setq space-remaining (- space-remaining indentation))
-         ;; require elements at this level to break/indent
-         (push (cons 'break indentation) indentation-stack)
-         ;; output line break and indent
+      ;; the printer maintains the current indentation level and decides when it's
+      ;; necessary to start putting out sequence elements on separate lines.
+      ;; It maintains a stack of ('brksym . indent) pairs giving for each level
+      ;; what the amount of indentation is and whether we are currently breaking
+      ;; up the sequence with newlines
+      (cl-typecase cmd
+        (string
+         ;; a plain token to output unconditionally
+         (message (format "string: %s" cmd))
+         ;; append and update column counter
          (setq indented-result
-               (concat indented-result
-                       "\n"
-                       (make-string indentation ?\s)))
-         )))
+               (concat indented-result cmd))
+         (setq space-remaining (- space-remaining (length cmd))))
 
-    (symbol
-     (cl-case cmd
+        (cons        ;; an "enter" - push mode for this level
+         (cl-assert (equal (car cmd) 'enter))
+         (message "cons")
+         (let ((len (cdr cmd))
+               (indentation (cdar indentation-stack)))
+           (if (or (< len space-remaining)
+                   (equal len 1))   ;; trivial (empty) parens
+               (progn
+                 (message (format "enough room: len %d vs. space remaining %d"
+                                  len space-remaining))
+                 ;; there is room enough to print the rest of this sexp
+                 ;; don't require line breaks
+                 (push (cons 'no-break indentation) indentation-stack)
+                 )
+             (setq indentation (+ indentation tspew-indent-level))
+             ;; new space remaining: whatever is left after indentation
+             (setq space-remaining (- space-remaining indentation))
+             ;; require elements at this level to break/indent
+             (push (cons 'break indentation) indentation-stack)
+             ;; output line break and indent
+             (setq indented-result
+                   (concat indented-result
+                           "\n"
+                           (make-string indentation ?\s)))
+             )))
 
-       ('result indented-result)     ;; for accessing accumulated text
+        (symbol
+         (cl-case cmd
 
-       ('exit
-        (message "exit")
-        ;; BOZO
-        ;; here I used to add another newline if we were previously breaking in between
-        ;; the purpose AFAICT was to ensure "decltype" got its own line break
-        ;; unfortunately this means we don't get ">>>" etc. at the end of nested parens
-        ;; so we need another solution for this case
-        (pop indentation-stack))
+           ('result indented-result)     ;; for accessing accumulated text
 
-       ('intbrk
-        (message "intbrk")
-        (when (equal (caar indentation-stack) 'break)
-          ;; we have a sequence element and previously decided to split one per line
-          ;; break and indent to current level (for a new sequence element)
-          (setq space-remaining (- space-remaining (cdar indentation-stack)))
-          (setq indented-result
-                (concat indented-result
-                        "\n"
-                        (make-string (cdar indentation-stack) ?\s)))))))
-    ))))
+           ('exit
+            (message "exit")
+            ;; BOZO
+            ;; here I used to add another newline if we were previously breaking in between
+            ;; the purpose AFAICT was to ensure "decltype" got its own line break
+            ;; unfortunately this means we don't get ">>>" etc. at the end of nested parens
+            ;; so we need another solution for this case
+            (pop indentation-stack))
+
+           ('intbrk
+            (message "intbrk")
+            (when (equal (caar indentation-stack) 'break)
+              ;; we have a sequence element and previously decided to split one per line
+              ;; break and indent to current level (for a new sequence element)
+              (setq space-remaining (- space-remaining (cdar indentation-stack)))
+              (setq indented-result
+                    (concat indented-result
+                            "\n"
+                            (make-string (cdar indentation-stack) ?\s)))))))
+        ))))
 
 (defun tspew--handle-type-region (end)
   "Fill and indent region starting at point containing a type
@@ -224,13 +224,13 @@ or part of a function."
   (let* ((indented-result "")
          (printer (tspew--printer)))
 
-  ;; send one token at a time, inserting indentation and line breaks as required
-  (save-excursion
-    (while (not (equal (point) end))
-      (cl-assert (<= (point) end))
-      (tspew--scan printer)))
+    ;; send one token at a time, inserting indentation and line breaks as required
+    (save-excursion
+      (while (not (equal (point) end))
+        (cl-assert (<= (point) end))
+        (tspew--scan printer)))
 
-  (funcall printer 'result)))
+    (funcall printer 'result)))
 
 
 (defun tspew--next-type-chunk (limit)
