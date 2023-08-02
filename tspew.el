@@ -17,6 +17,7 @@
 
 (require 'compile)
 (require 'cc-mode)
+(require 'cl-lib)
 
 (defgroup tspew nil
   "Display C++ compilation results more cleanly.
@@ -155,6 +156,7 @@ Each element is a dotted pair of:
                                          (length cmd))))
 
     (cons        ;; an "enter" - push mode for this level
+     (cl-assert (equal (car cmd) 'enter))
      (message "cons")
          (let ((len (cdr cmd))
                (indentation (cdar tspew--indentation-stack)))
@@ -215,7 +217,7 @@ or part of a function."
   ;; send one token at a time, inserting indentation and line breaks as required
   (save-excursion
     (while (not (equal (point) end))
-      (assert (<= (point) end))
+      (cl-assert (<= (point) end))
       (tspew--scan)))
 
   tspew--indented-result
