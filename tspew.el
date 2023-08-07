@@ -217,7 +217,8 @@ If the compilation window is visible, its width will be used instead")
                             (make-string (cdar indentation-stack) ?\s)))))))
         ))))
 
-(defun tspew--handle-type-region (end)
+;; could really be called handle-chunk
+(defun tspew--handle-type-region (start end)
   "Fill and indent region starting at point containing a type
 or part of a function."
 
@@ -226,6 +227,7 @@ or part of a function."
 
     ;; send one token at a time, inserting indentation and line breaks as required
     (save-excursion
+      (goto-char start)
       (while (not (equal (point) end))
         (cl-assert (<= (point) end))
         (tspew--scan printer)))
@@ -254,7 +256,7 @@ Leaves point at the start of the chunk."
 )
 
 (defun tspew--handle-chunks (tstart tend)
-  "Fill and indent a series of \"chunks\" (whitespace-separated bits of a quoted type expression
+  "Fill and indent a series of \"chunks\" (whitespace-separated parts of a quoted type expression
 within an error message)"
   (save-excursion
     ;; the line this type is on exceeds the desired width
@@ -266,15 +268,22 @@ within an error message)"
       (goto-char tstart)
       (while (not (equal (point) tend))
         ;; get the next chunk (point through tint)
-        (let ((tint (tspew--next-type-chunk tend)))
+        (let ((tint (tspew--next-type-chunk tend))
+              (start (point)))
          ;; fill and indent
           (message (format "chunk extends from %d to %d (end %d)" tstart tint tend))
-          (setq result
-                (concat result (tspew--handle-type-region tint)))
-          (goto-char tint)
+          (if (tspew--parse-type)
+              (if (not (equal (point) tint))
+                  (message (format "chunk starts with a type but does not fill the range (%d vs %d): %s"
+                                   (point) tint (buffer-substring tstart tint)))
+                (setq result (concat result (tspew--handle-type-region start tint)))))
+
+          (goto-char tint)  ;; skip forward regardless
           ))
       (concat result "\n"))))
 
+;; this doesn't really handle a "type" - it handles a specially quoted portion of an error message
+;; contents can be functions, function specializations, maybe other things?
 (defun tspew--handle-type (tstart tend)
   "Fill and indent a single type within an error message"
     ;; create an overlay covering the type
@@ -395,3 +404,82 @@ within an error message)"
 
 ;; BOZO should this be tspew-mode?
 (provide 'tspew)
+
+;; A lightweight parser formalism
+;; A Parser returns t and updates point if successful and returns nil otherwise
+
+;; low-level parsers
+
+(defun tspew--parse-symbol ()
+  "Parse a symbol (a string of characters with word or \"symbol constituent\" syntax)"
+  (let ((start (point)))
+    ;; skip forward past word and symbol constituents
+    ;; forward-symbol skips initial whitespace also, which I don't want
+    (or (> (skip-syntax-forward "w_") 0)
+         (progn
+           (goto-char start)
+           nil))))
+
+(defun tspew--parse-paren-expr ()
+  "Parse a balanced parenthesis expression, according to the current syntax table, a.k.a. a \"sexp\""
+  (and (equal (char-syntax (char-after)) ?\()
+       (progn
+         (forward-sexp)    ;; this could theoretically fail but again, this is compiler output...
+         t)))
+
+(defun tspew--parse-cv ()
+  "Parse the const or volatile keywords"
+  (let ((start (point)))
+    (skip-syntax-forward "w_")
+    (if (or (equal (buffer-substring start (point)) "const")
+            (equal (buffer-substring start (point)) "volatile"))
+        t
+      (goto-char start)
+      nil)))
+
+;; mandatory whitespace
+(defun tspew--parse-whitespace ()
+  "Parse one or more whitespace characters"
+  (let ((start (point)))
+    (if (> (skip-syntax-forward " ") 0)
+        t
+      (goto-char start)
+      nil)))
+
+;; some combinators for use in defining higher-level structures
+
+(defun tspew--parse-optional (p)
+  "Create a parser that optionally parses its argument (i.e. ignores any failure)"
+  (lambda () (or (funcall p) t)))
+
+(defun tspew--parse-alternative (p1 p2)
+  "Create a parser that attempts one, then (if it fails) the other input parser"
+  (lambda () (or (funcall p1) (funcall p2))))
+
+(defun tspew--parse-sequential (p1 p2)
+  "Create a parser that attempts to parse both input parsers in sequence, failing if either fails"
+  (lambda ()
+    (let ((start (point)))
+      (if (and (funcall p1) (funcall p2))
+          t
+        (goto-char start)
+        nil))))
+
+;; composed, higher-level parsers
+
+(defun tspew--parse-type ()
+  "Parse a type as found in compiler error messages"
+  ;; cv qualifier, followed by symbol, followed optionally
+  ;; by a parenthesized expression (angle brackets), followed
+  ;; optionally by a symbol (member types, pointer/ref indicators, etc.)
+  ;; type := [ cv ] symbol [ sexp [ symbol ] ] ]
+  ;; e.g.     const std::vector<double>::iterator
+  ;;          ^- cv ^-symbol   ^- sexp ^-symbol
+  (funcall (tspew--parse-sequential
+            (tspew--parse-optional
+             (tspew--parse-sequential #'tspew--parse-cv #'tspew--parse-whitespace))
+            (tspew--parse-sequential
+             #'tspew--parse-symbol
+             (tspew--parse-optional (tspew--parse-sequential
+                                     #'tspew--parse-paren-expr
+                                     (tspew--parse-optional #'tspew--parse-symbol)))))))
