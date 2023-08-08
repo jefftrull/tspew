@@ -429,13 +429,11 @@ within an error message)"
 
 (defun tspew--parse-cv ()
   "Parse the const or volatile keywords"
-  (let ((start (point)))
-    (skip-syntax-forward "w_")
-    (if (or (equal (buffer-substring start (point)) "const")
-            (equal (buffer-substring start (point)) "volatile"))
-        t
-      (goto-char start)
-      nil)))
+  (if (or (looking-at "const\s ") (looking-at "volatile\s "))
+      (progn
+        (skip-syntax-forward "w ")
+        t)
+    nil))
 
 ;; mandatory whitespace
 (defun tspew--parse-whitespace ()
@@ -476,10 +474,8 @@ within an error message)"
   ;; e.g.     const std::vector<double>::iterator
   ;;          ^- cv ^-symbol   ^- sexp ^-symbol
   (funcall (tspew--parse-sequential
-            (tspew--parse-optional
-             (tspew--parse-sequential #'tspew--parse-cv #'tspew--parse-whitespace))
-            (tspew--parse-sequential
+            (tspew--parse-optional #'tspew--parse-cv)
              #'tspew--parse-symbol
              (tspew--parse-optional (tspew--parse-sequential
                                      #'tspew--parse-paren-expr
-                                     (tspew--parse-optional #'tspew--parse-symbol)))))))
+                                     (tspew--parse-optional #'tspew--parse-symbol))))))
