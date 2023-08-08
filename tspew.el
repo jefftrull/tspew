@@ -454,11 +454,13 @@ within an error message)"
   "Create a parser that attempts one, then (if it fails) the other input parser"
   (lambda () (or (funcall p1) (funcall p2))))
 
-(defun tspew--parse-sequential (p1 p2)
-  "Create a parser that attempts to parse both input parsers in sequence, failing if either fails"
-  (lambda ()
+(defmacro tspew--parse-sequential (&rest parsers)
+  "Create a parser that attempts to parse a series of input parsers in sequence, failing if any fail"
+  `(lambda ()
     (let ((start (point)))
-      (if (and (funcall p1) (funcall p2))
+      ;; this whole thing is a macro because of this - "and" is not a function, so we cannot "apply" it.
+      ;; instead we build the expression through a macro
+      (if (and ,@(mapcar (lambda (p) (list 'funcall p)) parsers))
           t
         (goto-char start)
         nil))))
