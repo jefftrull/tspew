@@ -35,6 +35,10 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
 ;; left and right angle brackets are a kind of parentheses in type names
 (modify-syntax-entry ?< "(>" tspew-syntax-table)
 (modify-syntax-entry ?> ")<" tspew-syntax-table)
+;; left and right square brackets are used as parentheses for the "with" clause in a function name
+(modify-syntax-entry ?< "([" tspew-syntax-table)
+(modify-syntax-entry ?> ")]" tspew-syntax-table)
+
 ;; colon is a "symbol constituent" - usable in identifiers
 (modify-syntax-entry ?: "_" tspew-syntax-table)
 ;; & and * can be present after any type. symbol constituent seems right
@@ -315,7 +319,7 @@ within an error message)"
          ;; (type-prefix-regexp "\\(?:error:\\|warning:\\|member\\|type\\|note:\\)[ ]+")
          (type-prefix-regexp "")
          ;; some surprising things can be in type names, because of "operator"
-         (quoted-type-regexp "\u2018\\([]\[[:alnum:]:()<>,&_ =+/*%^.-]+\\)\u2019")
+         (quoted-type-regexp "\u2018\\([]\[[:alnum:]:()<>,&_ =+/*%^.;-]+\\)\u2019")
          (type-regexp (concat type-prefix-regexp quoted-type-regexp))
          )
     (save-excursion
@@ -420,12 +424,13 @@ within an error message)"
            (goto-char start)
            nil))))
 
-(defun tspew--parse-paren-expr ()
-  "Parse a balanced parenthesis expression, according to the current syntax table, a.k.a. a \"sexp\""
-  (and (equal (char-syntax (char-after)) ?\()
-       (progn
-         (forward-sexp)    ;; this could theoretically fail but again, this is compiler output...
-         t)))
+(defun tspew--parse-paren-expr (parenc)
+  "Parse a balanced parenthesis expression starting with the given opening character"
+  (lambda ()
+    (and (equal (char-after) parenc)
+         (progn
+           (forward-sexp)    ;; this could theoretically fail but again, this is compiler output...
+           t))))
 
 (defun tspew--parse-cv ()
   "Parse the const or volatile keywords"
@@ -479,5 +484,5 @@ within an error message)"
             (tspew--parse-optional #'tspew--parse-cv)
              #'tspew--parse-symbol
              (tspew--parse-optional (tspew--parse-sequential
-                                     #'tspew--parse-paren-expr
+                                     (tspew--parse-paren-expr ?<)
                                      (tspew--parse-optional #'tspew--parse-symbol))))))
