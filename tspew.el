@@ -198,10 +198,10 @@ If the compilation window is visible, its width will be used instead")
         (symbol
          (cl-case cmd
 
-           ('result indented-result)     ;; for accessing accumulated text
+           (result indented-result)     ;; for accessing accumulated text
 
-           ('exit
             (message "exit")
+           (exit
             ;; BOZO
             ;; here I used to add another newline if we were previously breaking in between
             ;; the purpose AFAICT was to ensure "decltype" got its own line break
@@ -209,8 +209,8 @@ If the compilation window is visible, its width will be used instead")
             ;; so we need another solution for this case
             (pop indentation-stack))
 
-           ('intbrk
             (message "intbrk")
+           (intbrk
             (when (equal (caar indentation-stack) 'break)
               ;; we have a sequence element and previously decided to split one per line
               ;; break and indent to current level (for a new sequence element)
