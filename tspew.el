@@ -437,7 +437,7 @@ within an error message)"
 
 (defun tspew--parse-cv ()
   "Parse the const or volatile keywords"
-  (if (or (looking-at "const\s ") (looking-at "volatile\s "))
+  (if (or (looking-at "const\\s ") (looking-at "volatile\\s "))
       (progn
         (skip-syntax-forward "w ")
         t)
