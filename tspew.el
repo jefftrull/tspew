@@ -144,10 +144,10 @@ If the compilation window is visible, its width will be used instead")
 
 ;; the "printer" (back end)
 
-(defun tspew--printer ()
+(defun tspew--printer (initial-indent)
   "Return a closure to \"print\" tokens while maintaining appropriate indentation"
   (let
-      ((indentation-stack '((no-break . 0)))  ;; current indent level info
+      ((indentation-stack `((no-break . ,initial-indent)))  ;; current indent level info
        ;; Each element is a dotted pair of:
        ;; 1) the current indentation level in columns
        ;; 2) whether we are splitting the elements of this level one per line
@@ -211,14 +211,17 @@ If the compilation window is visible, its width will be used instead")
 
             (message "intbrk")
            (intbrk
-            (when (equal (caar indentation-stack) 'break)
-              ;; we have a sequence element and previously decided to split one per line
-              ;; break and indent to current level (for a new sequence element)
-              (setq space-remaining (- space-remaining (cdar indentation-stack)))
-              (setq indented-result
-                    (concat indented-result
-                            "\n"
-                            (make-string (cdar indentation-stack) ?\s)))))))
+            (if (equal (caar indentation-stack) 'break)
+                (progn
+                  ;; we have a sequence element and previously decided to split one per line
+                  ;; break and indent to current level (for a new sequence element)
+                  (setq space-remaining (- space-remaining (cdar indentation-stack)))
+                  (setq indented-result
+                        (concat indented-result
+                                "\n"
+                                (make-string (cdar indentation-stack) ?\s))))
+              ;; if we are not currently breaking lines, just add a space for readability
+              (setq indented-result (concat indented-result " "))))))
         ))))
 
 ;; could really be called handle-chunk
@@ -227,7 +230,7 @@ If the compilation window is visible, its width will be used instead")
 or part of a function."
 
   (let* ((indented-result "")
-         (printer (tspew--printer)))
+         (printer (tspew--printer (or initial-indent 0))))
 
     ;; send one token at a time, inserting indentation and line breaks as required
     (save-excursion
