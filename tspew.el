@@ -1,4 +1,4 @@
-`;; -*- lexical-binding: t; -*-
+;; -*- lexical-binding: t; -*-
 ;;; tspew.el --- Clean and format "template spew" errors from gcc and Clang
 
 ;; Author: Jeff Trull <edaskel@att.net>
