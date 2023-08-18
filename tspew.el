@@ -147,12 +147,12 @@ If the compilation window is visible, its width will be used instead")
 (defun tspew--printer (initial-indent)
   "Return a closure to \"print\" tokens while maintaining appropriate indentation"
   (let
-      ((indentation-stack `((no-break . ,initial-indent)))  ;; current indent level info
+      ((indentation-stack `((no-break . ,initial-indent)))    ;; current indent level info
        ;; Each element is a dotted pair of:
        ;; 1) the current indentation level in columns
        ;; 2) whether we are splitting the elements of this level one per line
-       (space-remaining tspew--fill-width)    ;; tracking horizontal space
-       (indented-result ""))                  ;; accumulated formatted text
+       (space-remaining (- tspew--fill-width initial-indent)) ;; tracking horizontal space
+       (indented-result ""))                                  ;; accumulated formatted text
     (lambda (cmd)
 
       ;; the printer maintains the current indentation level and decides when it's
@@ -185,7 +185,7 @@ If the compilation window is visible, its width will be used instead")
                  )
              (setq indentation (+ indentation tspew-indent-level))
              ;; new space remaining: whatever is left after indentation
-             (setq space-remaining (- space-remaining indentation))
+             (setq space-remaining (- tspew--fill-width indentation))
              ;; require elements at this level to break/indent
              (push (cons 'break indentation) indentation-stack)
              ;; output line break and indent
