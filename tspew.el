@@ -163,7 +163,6 @@ If the compilation window is visible, its width will be used instead")
       (cl-typecase cmd
         (string
          ;; a plain token to output unconditionally
-         (message (format "string: %s" cmd))
          ;; append and update column counter
          (setq indented-result
                (concat indented-result cmd))
@@ -171,14 +170,11 @@ If the compilation window is visible, its width will be used instead")
 
         (cons        ;; an "enter" - push mode for this level
          (cl-assert (equal (car cmd) 'enter))
-         (message "cons")
          (let ((len (cdr cmd))
                (indentation (cdar indentation-stack)))
            (if (or (< len space-remaining)
                    (equal len 1))   ;; trivial (empty) parens
                (progn
-                 (message (format "enough room: len %d vs. space remaining %d"
-                                  len space-remaining))
                  ;; there is room enough to print the rest of this sexp
                  ;; don't require line breaks
                  (push (cons 'no-break indentation) indentation-stack)
@@ -200,7 +196,6 @@ If the compilation window is visible, its width will be used instead")
 
            (result indented-result)     ;; for accessing accumulated text
 
-            (message "exit")
            (exit
             ;; BOZO
             ;; here I used to add another newline if we were previously breaking in between
@@ -209,7 +204,6 @@ If the compilation window is visible, its width will be used instead")
             ;; so we need another solution for this case
             (pop indentation-stack))
 
-            (message "intbrk")
            (intbrk
             (if (equal (caar indentation-stack) 'break)
                 (progn
