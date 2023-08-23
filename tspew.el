@@ -122,7 +122,7 @@ If the compilation window is visible, its width will be used instead")
       ;; "exit hierarchy" - a parenthesized expression ends
 
       (cond
-       ((equal tok ",")
+       ((or (equal tok ",") (equal tok ";"))
         (funcall printer 'intbrk))    ;; optional newline between elements
 
        ((equal (char-syntax (string-to-char tok)) ?\()
@@ -218,10 +218,8 @@ If the compilation window is visible, its width will be used instead")
               (setq indented-result (concat indented-result " "))))))
         ))))
 
-;; could really be called handle-chunk
-(defun tspew--handle-type-region (start end)
-  "Fill and indent region starting at point containing a type
-or part of a function."
+(defun tspew--format-region (start end &optional initial-indent)
+  "Fill and indent region containing a type"
 
   (let* ((indented-result "")
          (printer (tspew--printer (or initial-indent 0))))
@@ -235,61 +233,161 @@ or part of a function."
 
     (funcall printer 'result)))
 
+(defun tspew--format-with-clause (start end)
+  "Fill and indent region containing a with clause"
 
-(defun tspew--next-type-chunk (limit)
-  "Return the end of the next portion of a type, or limit if none.
-Leaves point at the start of the chunk."
-  (skip-syntax-forward " ")
-  (if (equal (point) limit)
-      limit
-    (save-excursion
-      (when (looking-at "decltype\\|const")
-        (forward-word)
-        (skip-syntax-forward " "))
-      (with-syntax-table tspew-syntax-table
-        (if (equal (point) limit)
-            limit
-          (forward-sexp)
-          ;; grab following parenthesized expression, if any
-          (if (and (not (equal (point) limit)) (equal (char-syntax (char-after)) ?\())
-              (forward-sexp))))
-      (point)))
-)
 
-(defun tspew--handle-chunks (tstart tend)
-  "Fill and indent a series of \"chunks\" (whitespace-separated parts of a quoted type expression
-within an error message)"
+  ;; the semicolon-separated list inside the with clause looks OK when formatted using the type code
   (save-excursion
-    ;; the line this type is on exceeds the desired width
-    ;; so we will create a reformatted version
-    (let ((result "\n"))
-      ;; break lines at "chunk boundaries" within the contents, if any (such as in a function signature)
-      ;; those are spaces between major sections of a function signature, like "decltype (...)"
-      ;; that are best placed on a separate line for readability
-      (goto-char tstart)
-      (while (not (equal (point) tend))
-        ;; get the next chunk (point through tint)
-        (let ((tint (tspew--next-type-chunk tend))
-              (start (point)))
-         ;; fill and indent
-          (message (format "chunk extends from %d to %d (end %d)" tstart tint tend))
-          (if (tspew--parse-type)
-              (if (not (equal (point) tint))
-                  (message (format "chunk starts with a type but does not fill the range (%d vs %d): %s"
-                                   (point) tint (buffer-substring tstart tint)))
-                (setq result (concat result (tspew--handle-type-region start tint)))))
+    (let* ((start (+ start 6))    ;; "[with "
+           (end (- end 1))        ;; directly before "]"
+           (tparam (progn (goto-char start) (forward-symbol 1) (buffer-substring start (point))))
+           (result "[with\n"))
+      (message "removing prefix and suffix we have %d to %d" start end)
+      (message "we are starting with parameter %s" tparam)
 
-          (goto-char tint)  ;; skip forward regardless
-          ))
-      (concat result "\n"))))
+      ;; do first X = Y pair
+      (forward-char 3)   ;; skip " = "
+      (setq result
+            (concat result tparam " = "
+                    (tspew--format-region
+                     (point)
+                     (progn (tspew--parse-type) (point))
+                     (+ (length tparam) 3))))
+      (while (not (equal (point) end))
+        (cl-assert (equal (char-after) ?\;))
+        (forward-char)
+        (skip-syntax-forward " ")
+        (let ((tparam (buffer-substring (point) (progn (forward-symbol 1) (point)))))
+          (forward-char 3)
+          (setq result
+                (concat result ";\n" tparam " = "
+                        (tspew--format-region
+                         (point)
+                         (progn (tspew--parse-type) (point))
+                         (+ (length tparam) 3))))))
+      (forward-char)  ;; skip trailing right bracket
+      (concat result "]\n"))))
 
-;; this doesn't really handle a "type" - it handles a specially quoted portion of an error message
+(defun tspew--format-function-region (start end)
+  "Fill and indent region containing a function"
+
+  ;; Detect (via existing parsers) the different chunks of a function
+  ;; then dispatch formatters (such as format-region) as appropriate
+   (save-excursion
+     (goto-char start)
+     (concat
+      "formatting function: " (buffer-substring start end) "\n"
+
+
+      ;; template<class X, class Y...> if present
+      (if (looking-at "template<")
+          (let ((result (tspew--format-template-preamble (point) (progn (tspew--parse-template-preamble) (point)))))
+            (skip-syntax-forward " ")
+            result)
+        "")
+
+      ;; constexpr and/or static (both optional)
+      (if (looking-at "constexpr ")
+          (progn
+            (forward-word)
+            (skip-syntax-forward " ")
+            "constexpr ")
+        "")
+
+      (if (looking-at "static ")
+          (progn
+            (forward-word)
+            (skip-syntax-forward " ")
+            "static ")
+        "")
+
+      (let ((tstart (point))
+            (tend (progn (tspew--parse-type) (point))))
+        (skip-syntax-forward " ")
+        (tspew--format-region tstart tend))
+
+      "\n"    ;; separate major sections with newlines
+
+      (buffer-substring (point) (progn (tspew--parse-func-name) (point)))
+
+      "\n"
+
+      (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
+
+      "\n"
+
+      ;; BOZO consider having parsers return end pos instead of t so we can use if-let
+
+      (if (< (point) end)
+          (progn (skip-syntax-forward " ")
+                 (let ((mfq-start (point)))
+                   (if (funcall (tspew--parser-memfn-qual))
+                       (concat (buffer-substring mfq-start (point)) "\n")
+                     "")))
+        "")
+
+      (if (< (point) end)
+          (progn (skip-syntax-forward " ")
+                 (let ((wc-start (point)))
+                   (if (tspew--parse-with-clause)
+                       (tspew--format-with-clause wc-start (point))
+                     "")))
+        ""))))
+
+  ;; newlines in between these:
+  ;; 1) output static if present
+  ;; 2) format return type
+  ;; 3) if func-name has template args, format individually
+  ;;    otherwise, format it as a unit with the param list
+  ;; 4) if with-clause present, format it
+
+(defun tspew--format-quoted-expr (tstart tend)
+  "Split up and indent a quoted region within an error message as necessary to meet line width requirements"
+  ;; At the moment we handle types or function names (as in "required from" lines)
+  ;; We check to see which one we have. Types are simple. For functions, we break them up into chunks
+  ;; separated by whitespace, like "return type" "function parameter list" or "with clause"
+  ;; and format those separately using the indent/fill algorithm
+  ;; TODO
+  (with-syntax-table tspew-syntax-table
+    (save-excursion
+      (let ((result "\n"))   ;; likely to be "\n\u2018" in the future
+        (goto-char tstart)
+        (cond
+         ((tspew--parse-function)
+          (message (format "found a function: |%s|" (buffer-substring tstart (point))))
+          (when (not (equal (point) tend))
+            (message "but it does not fill the quoted expression"))
+          (setq result (concat result (tspew--format-function-region tstart (point)))))
+
+         ((tspew--parse-type)
+          (message (format "found a type: |%s|" (buffer-substring tstart (point))))
+          (when (not (equal (point) tend))
+            (message "but it does not fill the quoted expression"))
+          (setq result (concat result (tspew--format-region tstart (point)))))
+
+         (t
+          (message (format "Found a quoted expression I don't understand: |%s|"
+                           (buffer-substring tstart tend)))))
+        result))))
+
+(defun tspew--format-template-preamble (tstart tend)
+  "Format a function template preamble e.g. template<class X, class Y, class Z>"
+
+  (save-excursion
+    (goto-char tstart)
+    (forward-word)  ;; skip "template"
+    (cl-assert (equal (char-after) ?<))
+    (concat "template"
+            (tspew--format-region (point) tend)
+            "\n")))
+
 ;; contents can be functions, function specializations, maybe other things?
-(defun tspew--handle-type (tstart tend)
-  "Fill and indent a single type within an error message"
+(defun tspew--handle-quoted-expr (tstart tend)
+  "Fill and indent a single quoted expression (type or function) within an error message"
     ;; create an overlay covering the type
   (let ((ov (make-overlay tstart tend))
-        (result (tspew--handle-chunks tstart tend)))
+        (result (tspew--format-quoted-expr tstart tend)))
 
       ;; make existing contents invisible
       (overlay-put ov 'invisible t)
@@ -328,7 +426,7 @@ within an error message)"
         (while (re-search-forward type-regexp lend t)
           (let ((tend (match-end 1)))
             ;; process this type match
-            (tspew--handle-type (match-beginning 1) tend)
+            (tspew--handle-quoted-expr (match-beginning 1) tend)
             ;; advance past matched text
             (goto-char tend)
             (if (not (eobp))
@@ -448,6 +546,24 @@ within an error message)"
       (goto-char start)
       nil)))
 
+(defun tspew--parse-template-preamble ()
+  "Parse the initial template<class X, class Y...> in function template specializations"
+  (if (looking-at "template<")
+      (progn
+        (forward-word 1)
+        (forward-sexp 1)
+        (skip-syntax-forward " ")
+        t)
+    nil))
+
+(defun tspew--parse-with-clause ()
+  "Parse a type elaboration for function template instantiations of the form \"[with X = Y; Q = R; ...]\""
+  (if (looking-at "\\[with ")
+      (progn
+        (forward-sexp)
+        t)
+    nil))
+
 ;;
 ;; parser generators (take a param, return a parser)
 ;;
@@ -475,6 +591,19 @@ within an error message)"
           (skip-syntax-forward " ")
           t)
       nil)))
+
+(defun tspew--parser-memfn-qual ()
+  "Parse a member function qualifier"
+  (tspew--parser-alternative
+   (tspew--parser-keyword "const")
+   (tspew--parser-keyword "volatile")
+   (tspew--parser-keyword "&&")
+   (tspew--parser-keyword "&")))
+
+;;
+;; parser combinators
+;;
+
 ;; some combinators for use in defining higher-level structures
 ;; these accept parsers and make new parsers from them
 
@@ -508,6 +637,16 @@ within an error message)"
 
 ;; composed, higher-level parsers
 
+(defun tspew--parse-func-name ()
+  "Parse a function name (the bit between the return type and the open paren of the arguments)"
+  ;; for the moment, assume we can use a "type" which is similar, possibly identical
+  (tspew--parse-type))
+
+(defun tspew--parse-param-list ()
+  "Parse a comma-separated function parameter list as seen in compiler error messages"
+  (forward-sexp)
+  )
+
 (defun tspew--parse-type ()
   "Parse a type as found in compiler error messages"
   ;; either a parenthesized decltype expression, OR
@@ -532,3 +671,28 @@ within an error message)"
              (tspew--parser-optional (tspew--parser-sequential
                                      (tspew--parser-paren-expr ?<)
                                      (tspew--parser-optional #'tspew--parse-symbol)))))))
+
+(defun tspew--parse-function ()
+  "Parse a function signature, as found in compiler error messages"
+  ;; func := [ static ] type func-name param-list [ with-clause ]
+  (funcall (tspew--parser-sequential
+            (tspew--parser-optional #'tspew--parse-template-preamble)
+            ;; BOZO actually not sure which of these keywords will appear first
+            (tspew--parser-optional (tspew--parser-keyword "constexpr"))
+            (tspew--parser-optional (tspew--parser-keyword "static"))
+            #'tspew--parse-type
+            #'tspew--parse-whitespace
+            #'tspew--parse-func-name
+            (tspew--parser-paren-expr ?\()
+
+            ;; member function qualifier
+            (tspew--parser-optional
+             (tspew--parser-sequential
+              #'tspew--parse-whitespace
+              (tspew--parser-memfn-qual)))
+
+            ;; with clause (like "[with X = Y, P = Q...]")
+            (tspew--parser-optional
+             (tspew--parser-sequential
+              #'tspew--parse-whitespace
+              #'tspew--parse-with-clause)))))
