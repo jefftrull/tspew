@@ -574,7 +574,8 @@ This is the primary engine for the formatting algorithm"
 
 ;; a specific string
 (defun tspew--parser-keyword (kwd)
-  "Create a parser for a pre-selected keyword"
+  "Create a parser for a pre-selected keyword.
+It requires - and consumes - trailing whitespace"
   (lambda ()
     (if (looking-at (concat kwd "\\s "))   ;; trailing whitespace required
         (progn
@@ -584,7 +585,7 @@ This is the primary engine for the formatting algorithm"
       nil)))
 
 (defun tspew--parser-memfn-qual ()
-  "Parse a member function qualifier"
+  "Parse a member function qualifier, consuming trailing whitespace"
   (tspew--parser-alternative
    (tspew--parser-keyword "const")
    (tspew--parser-keyword "volatile")
@@ -676,14 +677,10 @@ This is the primary engine for the formatting algorithm"
             #'tspew--parse-func-name
             (tspew--parser-paren-expr ?\()
 
-            ;; member function qualifier
             (tspew--parser-optional
              (tspew--parser-sequential
               #'tspew--parse-whitespace
-              (tspew--parser-memfn-qual)))
-
-            ;; with clause (like "[with X = Y, P = Q...]")
-            (tspew--parser-optional
-             (tspew--parser-sequential
-              #'tspew--parse-whitespace
-              #'tspew--parse-with-clause)))))
+              (tspew--parser-optional
+               (tspew--parser-memfn-qual))        ;; member function qualifier
+              (tspew--parser-optional
+               #'tspew--parse-with-clause))))))   ;; with clause (like "[with X = Y, P = Q...]")
