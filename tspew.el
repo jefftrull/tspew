@@ -224,7 +224,8 @@ If the compilation window is visible, its width will be used instead")
         ))))
 
 (defun tspew--format-region (start end &optional initial-indent)
-  "Fill and indent region containing a type"
+  "Fill and indent region containing text.
+This is the primary engine for the formatting algorithm"
 
   (let* ((indented-result "")
          (printer (tspew--printer (or initial-indent 0))))
@@ -247,8 +248,6 @@ If the compilation window is visible, its width will be used instead")
            (end (- end 1))        ;; directly before "]"
            (tparam (progn (goto-char start) (forward-symbol 1) (buffer-substring start (point))))
            (result "[with\n"))
-      (message "removing prefix and suffix we have %d to %d" start end)
-      (message "we are starting with parameter %s" tparam)
 
       ;; do first X = Y pair
       (forward-char 3)   ;; skip " = "
@@ -350,22 +349,23 @@ If the compilation window is visible, its width will be used instead")
   ;; We check to see which one we have. Types are simple. For functions, we break them up into chunks
   ;; separated by whitespace, like "return type" "function parameter list" or "with clause"
   ;; and format those separately using the indent/fill algorithm
-  ;; TODO
   (with-syntax-table tspew-syntax-table
     (save-excursion
       (let ((result "\n"))   ;; likely to be "\n\u2018" in the future
         (goto-char tstart)
         (cond
          ((tspew--parse-function)
-          (message (format "found a function: |%s|" (buffer-substring tstart (point))))
           (when (not (equal (point) tend))
-            (message "but it does not fill the quoted expression"))
+            (message "found a function: |%s| but it does not fill the quoted expression |%s|"
+                     (buffer-substring tstart (point))
+                     (buffer-substring tstart tend)))
           (setq result (concat result (tspew--format-function-region tstart (point)))))
 
          ((tspew--parse-type)
-          (message (format "found a type: |%s|" (buffer-substring tstart (point))))
           (when (not (equal (point) tend))
-            (message "but it does not fill the quoted expression"))
+            (message "found a type: |%s| but it does not fill the quoted expression |%s|"
+                     (buffer-substring tstart (point))
+                     (buffer-substring tstart tend)))
           (setq result (concat result (tspew--format-region tstart (point)))))
 
          (t
@@ -665,7 +665,7 @@ If the compilation window is visible, its width will be used instead")
 
 (defun tspew--parse-function ()
   "Parse a function signature, as found in compiler error messages"
-  ;; func := [ static ] type func-name param-list [ with-clause ]
+  ;; func := [ constexpr ] [ static ] type func-name param-list [memfn-qual] [ with-clause ]
   (funcall (tspew--parser-sequential
             (tspew--parser-optional #'tspew--parse-template-preamble)
             ;; BOZO actually not sure which of these keywords will appear first
