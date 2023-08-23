@@ -70,6 +70,11 @@ If the compilation window is visible, its width will be used instead")
 ;; (1981), which is paywalled, but there is a nice description of it and
 ;; related work in "the PretzelBook", see
 ;; http://www.literateprogramming.com/pretzelbook.pdf
+;; There were apparently many similar approaches in the late 70s
+
+;; The scanner is implemented in the literature (such as it is) as a parser
+;; that supplies different things to the printer depending on the place
+;; you are in the AST. Having only an ad-hoc scanner, I have ad-hoc code for this.
 
 ;; the "scanner" (front end) part of the system
 (defun tspew--scan (printer)
@@ -236,7 +241,6 @@ If the compilation window is visible, its width will be used instead")
 (defun tspew--format-with-clause (start end)
   "Fill and indent region containing a with clause"
 
-
   ;; the semicolon-separated list inside the with clause looks OK when formatted using the type code
   (save-excursion
     (let* ((start (+ start 6))    ;; "[with "
@@ -277,8 +281,6 @@ If the compilation window is visible, its width will be used instead")
    (save-excursion
      (goto-char start)
      (concat
-      "formatting function: " (buffer-substring start end) "\n"
-
 
       ;; template<class X, class Y...> if present
       (if (looking-at "template<")
