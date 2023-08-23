@@ -408,17 +408,10 @@ If the compilation window is visible, its width will be used instead")
   ;; lstart is a position, lend is a marker
   ;; is this an error message with a type?
   (let* ((err-regexp (cadr (assoc 'gnu compilation-error-regexp-alist-alist)))
-         ;; types are enclosed by Unicode left and right single quotes
-         ;; but sometimes non-type (or function) things are in quotes
-         ;; a prefix is necessary to distinguish them
+         ;; types and function signatures are enclosed by Unicode left and right single quotes
 
-         ;; experiment: forget about the prefix. Any quoted expression is a type...?
-         ;; (type-prefix-regexp "\\(?:error:\\|warning:\\|member\\|type\\|note:\\)[ ]+")
-         (type-prefix-regexp "")
          ;; some surprising things can be in type names, because of "operator"
-         (quoted-type-regexp "\u2018\\([]\[[:alnum:]:()<>,&_ =+/*%^.;-]+\\)\u2019")
-         (type-regexp (concat type-prefix-regexp quoted-type-regexp))
-         )
+         (type-regexp "\u2018\\([]\[[:alnum:]:()<>,&_ =+/*%^.;-]+\\)\u2019"))
     (save-excursion
       (goto-char lstart)
       (if (and (looking-at err-regexp)  ;; error line
@@ -430,11 +423,7 @@ If the compilation window is visible, its width will be used instead")
             ;; process this type match
             (tspew--handle-quoted-expr (match-beginning 1) tend)
             ;; advance past matched text
-            (goto-char tend)
-            (if (not (eobp))
-                (forward-char))))
-        ))))
-
+            (goto-char tend)))))))
 
 ;; remember where we are in the buffer
 ;; the compilation filter may give us partial lines, so we have to keep track of how far
