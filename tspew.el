@@ -490,6 +490,8 @@ This is the primary engine for the formatting algorithm"
     ;; if we are being toggled off, remove hooks
     (remove-hook 'compilation-start-hook 'tspew--parse-initialize)
     (remove-hook 'compilation-filter-hook 'tspew--compilation-filter)
+    ;; overlays too
+    (tspew--remove-overlays)
     (kill-local-variable 'tspew--parse-start)))
 
 ;; BOZO should this be tspew-mode?
