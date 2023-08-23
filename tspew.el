@@ -406,10 +406,20 @@ within an error message)"
 ;; BOZO should this be tspew-mode?
 (provide 'tspew)
 
+;; NEW (as of 8/4/2023) plan:
+;; Don't bother with start points
+;; We have functions for each production in the grammar that return an endpoint (found!) or nil.
+;; We make functions like "optional" and "alternative" that wrap them.
+;; Each parser only handles internal whitespace. We AND them implicitly.
+;; These low-level parsers will not interact with the fill/indent mechanism, so no printer parameter
+;; We will gather higher-level objects ("chunks") and then submit them to that facility
+
+;; point updated only on successful parse
+
 ;; A lightweight parser formalism
 ;; A Parser returns t and updates point if successful and returns nil otherwise
 
-;; low-level parsers
+;; low-level (leaf) parsers
 
 (defun tspew--parse-symbol ()
   "Parse a symbol (a string of characters with word or \"symbol constituent\" syntax)"
@@ -420,14 +430,6 @@ within an error message)"
          (progn
            (goto-char start)
            nil))))
-
-(defun tspew--parse-paren-expr (parenc)
-  "Parse a balanced parenthesis expression starting with the given opening character"
-  (lambda ()
-    (and (equal (char-after) parenc)
-         (progn
-           (forward-sexp)    ;; this could theoretically fail but again, this is compiler output...
-           t))))
 
 (defun tspew--parse-cv ()
   "Parse the const or volatile keywords"
@@ -446,40 +448,87 @@ within an error message)"
       (goto-char start)
       nil)))
 
-;; some combinators for use in defining higher-level structures
+;;
+;; parser generators (take a param, return a parser)
+;;
 
-(defun tspew--parse-optional (p)
+;; here we will use "parser" in the name to indicate that result is a parser,
+;; so you have to funcall to use it. You can also use the result in a parser
+;; combinator (see below)
+
+;; parenthesized expression using the given start character
+(defun tspew--parser-paren-expr (parenc)
+  "Parse a balanced parenthesis expression starting with the given opening character"
+  (lambda ()
+    (and (equal (char-after) parenc)
+         (progn
+           (forward-sexp)    ;; this could theoretically fail but again, this is compiler output...
+           t))))
+
+;; a specific string
+(defun tspew--parser-keyword (kwd)
+  "Create a parser for a pre-selected keyword"
+  (lambda ()
+    (if (looking-at (concat kwd "\\s "))   ;; trailing whitespace required
+        (progn
+          (forward-char (length kwd))
+          (skip-syntax-forward " ")
+          t)
+      nil)))
+;; some combinators for use in defining higher-level structures
+;; these accept parsers and make new parsers from them
+
+(defun tspew--parser-optional (p)
   "Create a parser that optionally parses its argument (i.e. ignores any failure)"
   (lambda () (or (funcall p) t)))
 
-(defun tspew--parse-alternative (p1 p2)
-  "Create a parser that attempts one, then (if it fails) the other input parser"
-  (lambda () (or (funcall p1) (funcall p2))))
+(defmacro tspew--parser-alternative (&rest parsers)
+  "Create a parser that attempts to parse one of several input parsers, failing if all fail"
+  `(lambda ()
+    (let ((start (point)))
+      ;; this whole thing is a macro because of this - "or" is not a function, so we cannot "apply" it.
+      ;; instead we build the expression through a macro
+      (if (or ,@(mapcar (lambda (p) (list 'funcall p)) parsers))
+          t
+        (goto-char start)
+        nil))))
 
-(defmacro tspew--parse-sequential (&rest parsers)
+(defmacro tspew--parser-sequential (&rest parsers)
   "Create a parser that attempts to parse a series of input parsers in sequence, failing if any fail"
   `(lambda ()
     (let ((start (point)))
-      ;; this whole thing is a macro because of this - "and" is not a function, so we cannot "apply" it.
-      ;; instead we build the expression through a macro
       (if (and ,@(mapcar (lambda (p) (list 'funcall p)) parsers))
           t
         (goto-char start)
         nil))))
 
+;;
+;; parser utilities
+;;
+
 ;; composed, higher-level parsers
 
 (defun tspew--parse-type ()
   "Parse a type as found in compiler error messages"
+  ;; either a parenthesized decltype expression, OR
   ;; cv qualifier, followed by symbol, followed optionally
   ;; by a parenthesized expression (angle brackets), followed
   ;; optionally by a symbol (member types, pointer/ref indicators, etc.)
-  ;; type := [ cv ] symbol [ sexp [ symbol ] ] ]
+  ;; type := decltype '(' expr ')' | [ cv ] symbol [ sexp [ symbol ] ] ]
   ;; e.g.     const std::vector<double>::iterator
   ;;          ^- cv ^-symbol   ^- sexp ^-symbol
-  (funcall (tspew--parse-sequential
-            (tspew--parse-optional #'tspew--parse-cv)
+  (funcall (tspew--parser-alternative
+            ;; decltype expression
+            (tspew--parser-sequential
+             (tspew--parser-keyword "decltype")
+             (tspew--parser-paren-expr ?\())
+            (tspew--parser-sequential
+             ;; stuff we might see in here: typename, const, volatile
+             (tspew--parser-optional
+              (tspew--parser-alternative
+               (tspew--parser-keyword "typename")
+               #'tspew--parse-cv))
              #'tspew--parse-symbol
-             (tspew--parse-optional (tspew--parse-sequential
-                                     (tspew--parse-paren-expr ?<)
-                                     (tspew--parse-optional #'tspew--parse-symbol))))))
+             (tspew--parser-optional (tspew--parser-sequential
+                                     (tspew--parser-paren-expr ?<)
+                                     (tspew--parser-optional #'tspew--parse-symbol)))))))
