@@ -83,20 +83,19 @@ If the compilation window is visible, its width will be used instead")
     ;; tokenize
     (let* ((start (point))
            (syntax (char-syntax (char-after)))
-           (tok
+           (tok-range
             ;; "consume" (by moving point) and return next token
             (cl-case syntax
               (?.
-               ;; punctuation is passed straight through
+               ;; punctuation is passed straight through along with trailing whitespace
                (skip-syntax-forward ".")
-               (let ((punct-end (point)))
-                 ;; skip trailing whitespace
-                 (skip-syntax-forward " ")
-                 (buffer-substring start punct-end)))
+               ;; skip trailing whitespace
+               (skip-syntax-forward " ")
+               (cons start (point)))
               (?\(
                ;; supply just the open "paren" (of whatever type)
                (forward-char)
-               (buffer-substring start (point)))
+               (cons start (point)))
               (?\)
                (forward-char)
                ;; closing "paren" may be followed by whitespace
@@ -106,19 +105,20 @@ If the compilation window is visible, its width will be used instead")
                  (when (not (equal (char-syntax (char-after)) ?\)))
                    ;; NOT another close paren. supply whitespace as next token.
                    (skip-syntax-backward " ")))
-               (string (char-after start)))
+               (cons start (+ start 1)))
               (?\s
                ;; whitespace not following punctuation or closing paren
                ;; preserve for readability
                (skip-syntax-forward " ")
-               (buffer-substring start (point)))
+               (cons start (point)))
               (t
                ;; grab the next sexp
                (forward-sexp)
-               (buffer-substring start (point))))))
+               (cons start (point)))))
+           (tok (buffer-substring (car tok-range) (cdr tok-range))))
 
       ;; send token to indent/fill engine
-      (funcall printer tok)
+      (funcall printer tok-range)
 
       ;; optionally send some control information
       ;; we send three kinds:
@@ -127,7 +127,7 @@ If the compilation window is visible, its width will be used instead")
       ;; "exit hierarchy" - a parenthesized expression ends
 
       (cond
-       ((or (equal tok ",") (equal tok ";"))
+       ((string-match-p "^[,;]\s" tok)
         (funcall printer 'intbrk))    ;; optional newline between elements
 
        ((equal (char-syntax (string-to-char tok)) ?\()
@@ -157,7 +157,9 @@ If the compilation window is visible, its width will be used instead")
        ;; 1) the current indentation level in columns
        ;; 2) whether we are splitting the elements of this level one per line
        (space-remaining (- tspew--fill-width initial-indent)) ;; tracking horizontal space
-       (indented-result ""))                                  ;; accumulated formatted text
+       (prev-tok-end nil)                                     ;; tracking "insertion point"
+       (format-instructions '()))                             ;; accumulated changes
+
     (lambda (cmd)
 
       ;; the printer maintains the current indentation level and decides when it's
@@ -166,64 +168,51 @@ If the compilation window is visible, its width will be used instead")
       ;; what the amount of indentation is and whether we are currently breaking
       ;; up the sequence with newlines
       (cl-typecase cmd
-        (string
-         ;; a plain token to output unconditionally
-         ;; append and update column counter
-         (setq indented-result
-               (concat indented-result cmd))
-         (setq space-remaining (- space-remaining (length cmd))))
+        (cons
+         (if (equal (car cmd) 'enter)
+             ;; an "enter" - push mode for this level
+             (let ((len (cdr cmd))
+                   (indentation (cdar indentation-stack)))
+               (if (or (< len space-remaining)
+                       (equal len 1))   ;; trivial (empty) parens
+                   ;; there is room enough to print the rest of this sexp
+                   ;; don't require line breaks
+                   (push (cons 'no-break indentation) indentation-stack)
+                 ;; we must switch to a new line to maximize available space
+                 (setq indentation (+ indentation tspew-indent-level))
+                 ;; new space remaining: whatever is left after indentation
+                 (setq space-remaining (- tspew--fill-width indentation))
+                 ;; require elements at this level to break/indent
+                 (push (cons 'break indentation) indentation-stack)
+                 ;; output line break and indent
+                 (push (cons prev-tok-end indentation) format-instructions)))
 
-        (cons        ;; an "enter" - push mode for this level
-         (cl-assert (equal (car cmd) 'enter))
-         (let ((len (cdr cmd))
-               (indentation (cdar indentation-stack)))
-           (if (or (< len space-remaining)
-                   (equal len 1))   ;; trivial (empty) parens
-               (progn
-                 ;; there is room enough to print the rest of this sexp
-                 ;; don't require line breaks
-                 (push (cons 'no-break indentation) indentation-stack)
-                 )
-             (setq indentation (+ indentation tspew-indent-level))
-             ;; new space remaining: whatever is left after indentation
-             (setq space-remaining (- tspew--fill-width indentation))
-             ;; require elements at this level to break/indent
-             (push (cons 'break indentation) indentation-stack)
-             ;; output line break and indent
-             (setq indented-result
-                   (concat indented-result
-                           "\n"
-                           (make-string indentation ?\s)))
-             )))
+           ;; not an "enter" command, but a plain token
+           ;; represented as a range in the buffer
+           (cl-assert (and (integerp (car cmd)) (integerp (cdr cmd))))
+           (setq prev-tok-end (cdr cmd))
+           (setq space-remaining (- space-remaining (- (cdr cmd) (car cmd))))))
 
         (symbol
          (cl-case cmd
 
-           (result indented-result)     ;; for accessing accumulated text
+           (result format-instructions) ;; return result
 
            (exit
-            (pop indentation-stack))   ;; restore previous indentation
+            (pop indentation-stack))    ;; restore previous indentation
 
            (intbrk
-            (if (equal (caar indentation-stack) 'break)
-                (progn
+            (when (equal (caar indentation-stack) 'break)
                   ;; we have a sequence element and previously decided to split one per line
                   ;; break and indent to current level (for a new sequence element)
                   (setq space-remaining (- space-remaining (cdar indentation-stack)))
-                  (setq indented-result
-                        (concat indented-result
-                                "\n"
-                                (make-string (cdar indentation-stack) ?\s))))
-              ;; if we are not currently breaking lines, just add a space for readability
-              (setq indented-result (concat indented-result " "))))))
-        ))))
+                  (push (cons prev-tok-end (cdar indentation-stack)) format-instructions)))))))))
 
 (defun tspew--format-region (start end &optional initial-indent)
   "Fill and indent region containing text.
 This is the primary engine for the formatting algorithm"
 
-  (let* ((indented-result "")
-         (printer (tspew--printer (or initial-indent 0))))
+  (let ((printer (tspew--printer (or initial-indent 0))))
 
     ;; send one token at a time, inserting indentation and line breaks as required
     (save-excursion
@@ -232,7 +221,8 @@ This is the primary engine for the formatting algorithm"
         (cl-assert (<= (point) end))
         (tspew--scan printer)))
 
-    (funcall printer 'result)))
+    (funcall printer 'result))
+))
 
 (defun tspew--format-with-clause (start end)
   "Fill and indent region containing a with clause"
@@ -242,12 +232,12 @@ This is the primary engine for the formatting algorithm"
     (let* ((start (+ start 6))    ;; "[with "
            (end (- end 1))        ;; directly before "]"
            (tparam (progn (goto-char start) (forward-symbol 1) (buffer-substring start (point))))
-           (result "[with\n"))
+           (result (list (cons start 0))))  ;; a single newline after "[with "
 
       ;; do first X = Y pair
       (forward-char 3)   ;; skip " = "
       (setq result
-            (concat result tparam " = "
+            (append result
                     (tspew--format-region
                      (point)
                      (progn (tspew--parse-type) (point))
@@ -255,17 +245,20 @@ This is the primary engine for the formatting algorithm"
       (while (not (equal (point) end))
         (cl-assert (equal (char-after) ?\;))
         (forward-char)
+        (push (cons (+ (point) 1) 0) result)     ;; a newline after every "; "
+
         (skip-syntax-forward " ")
-        (let ((tparam (buffer-substring (point) (progn (forward-symbol 1) (point)))))
-          (forward-char 3)
-          (setq result
-                (concat result ";\n" tparam " = "
-                        (tspew--format-region
-                         (point)
-                         (progn (tspew--parse-type) (point))
-                         (+ (length tparam) 3))))))
-      (forward-char)  ;; skip trailing right bracket
-      (concat result "]\n"))))
+        (forward-symbol 1)   ;; template parameter
+        (forward-char 3)     ;; " = "
+        (setq result
+              (append result
+                      (tspew--format-region
+                       (point)
+                       (progn (tspew--parse-type) (point))
+                       (+ (length tparam) 3)))))
+      (forward-char)
+      (push (cons (point) 0) result)     ;; a newline after the final right bracket
+      result)))  ;; skip trailing right bracket
 
 (defun tspew--format-function-region (start end)
   "Fill and indent region containing a function"
@@ -274,60 +267,66 @@ This is the primary engine for the formatting algorithm"
   ;; then dispatch formatters (such as format-region) as appropriate
    (save-excursion
      (goto-char start)
-     (concat
+     (append
 
       ;; template<class X, class Y...> if present
       (if (looking-at "template<")
           (let ((result (tspew--format-template-preamble (point) (progn (tspew--parse-template-preamble) (point)))))
             (skip-syntax-forward " ")
             result)
-        "")
+        '())
 
       ;; constexpr and/or static (both optional)
       (if (looking-at "constexpr ")
           (progn
             (forward-word)
             (skip-syntax-forward " ")
-            "constexpr ")
-        "")
+            '())
+        '())
 
       (if (looking-at "static ")
           (progn
             (forward-word)
             (skip-syntax-forward " ")
-            "static ")
-        "")
+            '())
+        '())
 
+      ;; return type
       (let ((tstart (point))
             (tend (progn (tspew--parse-type) (point))))
         (skip-syntax-forward " ")
         (tspew--format-region tstart tend))
 
-      "\n"    ;; separate major sections with newlines
+      (list (cons (point) 0))    ;; separate major sections with newlines
 
-      (buffer-substring (point) (progn (tspew--parse-func-name) (point)))
+      (progn (tspew--parse-func-name) '())
 
-      "\n"
+      (list (cons (point) 0))
 
       (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
 
-      "\n"
-
+      ;; skip trailing space and memfn qual, if present
       (if (< (point) end)
-          (progn (skip-syntax-forward " ")
-                 (let ((mfq-start (point)))
-                   (if (funcall (tspew--parser-memfn-qual))
-                       (concat (buffer-substring mfq-start (point)) "\n")
-                     "")))
-        "")
+          (progn
+            (skip-syntax-forward " ")
+            (funcall (tspew--parser-memfn-qual))
+            '())
+        '())
+
+      ;; newline after parameter list plus (optional) memfn qualifier
+      (progn
+        (skip-syntax-forward " ")
+        (if (< (point) end)
+            (list (cons (point) 0))
+          '()))
 
       (if (< (point) end)
           (progn (skip-syntax-forward " ")
                  (let ((wc-start (point)))
                    (if (tspew--parse-with-clause)
-                       (tspew--format-with-clause wc-start (point))
-                     "")))
-        ""))))
+                         (tspew--format-with-clause wc-start (point))
+                     '())))
+        '()))))
 
   ;; newlines in between these:
   ;; 1) output static if present
@@ -344,7 +343,7 @@ This is the primary engine for the formatting algorithm"
   ;; and format those separately using the indent/fill algorithm
   (with-syntax-table tspew-syntax-table
     (save-excursion
-      (let ((result "\n"))   ;; likely to be "\n\u2018" in the future
+      (let ((result (list (cons tstart 0))))   ;; initial newline
         (goto-char tstart)
         (cond
          ((tspew--parse-function)
@@ -352,19 +351,19 @@ This is the primary engine for the formatting algorithm"
             (message "found a function: |%s| but it does not fill the quoted expression |%s|"
                      (buffer-substring tstart (point))
                      (buffer-substring tstart tend)))
-          (setq result (concat result (tspew--format-function-region tstart (point)))))
+          (append result (tspew--format-function-region tstart (point))))
 
          ((tspew--parse-type)
           (when (not (equal (point) tend))
             (message "found a type: |%s| but it does not fill the quoted expression |%s|"
                      (buffer-substring tstart (point))
                      (buffer-substring tstart tend)))
-          (setq result (concat result (tspew--format-region tstart (point)))))
+          (append result (tspew--format-region tstart (point))))
 
          (t
           (message (format "Found a quoted expression I don't understand: |%s|"
-                           (buffer-substring tstart tend)))))
-        result))))
+                           (buffer-substring tstart tend)))
+          nil))))))
 
 (defun tspew--format-template-preamble (tstart tend)
   "Format a function template preamble e.g. template<class X, class Y, class Z>"
@@ -373,28 +372,30 @@ This is the primary engine for the formatting algorithm"
     (goto-char tstart)
     (forward-word)  ;; skip "template"
     (cl-assert (equal (char-after) ?<))
-    (concat "template"
-            (tspew--format-region (point) tend)
-            "\n")))
+    (append
+     (tspew--format-region (point) tend)
+     (list (cons tend 0)))))   ;; terminal newline
 
 ;; contents can be functions, function specializations, maybe other things?
 (defun tspew--handle-quoted-expr (tstart tend)
   "Fill and indent a single quoted expression (type or function) within an error message"
     ;; create an overlay covering the type
   (let ((ov (make-overlay tstart tend))
-        (result (tspew--format-quoted-expr tstart tend)))
+        (instructions (tspew--format-quoted-expr tstart tend)))
 
-      ;; make existing contents invisible
-      (overlay-put ov 'invisible t)
-
-      ;; display indented and filled types in place of the original
-      (overlay-put ov 'before-string result)
-
-      ;; remember overlay
-      ;; [JET] I initially kept a list of overlays and used that, but compilation-mode
-      ;; calls kill-all-local-variables, which deletes the buffer-local value
-      ;; of my list. So instead, we use properties:
-      (overlay-put ov 'is-tspew t)))
+    (when (equal 0 (length instructions))
+      (message "no instructions produced for region |%s|" (buffer-substring tstart tend)))
+    (dolist (instr (tspew--format-quoted-expr tstart tend))
+            (let* ((istart (car instr))
+                   (indentation (cdr instr))
+                   (ov (make-overlay istart istart)))
+              ;; display indented and filled types in place of the original
+              (overlay-put ov 'before-string (concat "\n" (make-string indentation ?\s)))
+              ;; remember overlay
+              ;; [JET] I initially kept a list of overlays and used that, but compilation-mode
+              ;; calls kill-all-local-variables, which deletes the buffer-local value
+              ;; of my list. So instead, we use properties:
+              (overlay-put ov 'is-tspew t)))))
 
 (defun tspew--handle-line (lstart lend)
   "Process a single line of error output"
