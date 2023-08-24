@@ -202,12 +202,7 @@ If the compilation window is visible, its width will be used instead")
            (result indented-result)     ;; for accessing accumulated text
 
            (exit
-            ;; BOZO
-            ;; here I used to add another newline if we were previously breaking in between
-            ;; the purpose AFAICT was to ensure "decltype" got its own line break
-            ;; unfortunately this means we don't get ">>>" etc. at the end of nested parens
-            ;; so we need another solution for this case
-            (pop indentation-stack))
+            (pop indentation-stack))   ;; restore previous indentation
 
            (intbrk
             (if (equal (caar indentation-stack) 'break)
@@ -317,8 +312,6 @@ This is the primary engine for the formatting algorithm"
       (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
 
       "\n"
-
-      ;; BOZO consider having parsers return end pos instead of t so we can use if-let
 
       (if (< (point) end)
           (progn (skip-syntax-forward " ")
