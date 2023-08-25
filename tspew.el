@@ -205,7 +205,7 @@ If the compilation window is visible, its width will be used instead")
             (when (equal (caar indentation-stack) 'break)
                   ;; we have a sequence element and previously decided to split one per line
                   ;; break and indent to current level (for a new sequence element)
-                  (setq space-remaining (- space-remaining (cdar indentation-stack)))
+                  (setq space-remaining (- tspew--fill-width (cdar indentation-stack)))
                   (push (cons prev-tok-end (cdar indentation-stack)) format-instructions)))))))))
 
 (defun tspew--format-region (start end &optional initial-indent)
