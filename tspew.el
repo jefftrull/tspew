@@ -248,7 +248,8 @@ This is the primary engine for the formatting algorithm"
         (push (cons (+ (point) 1) 0) result)     ;; a newline after every "; "
 
         (skip-syntax-forward " ")
-        (forward-symbol 1)   ;; template parameter
+        (setq tparam
+              (buffer-substring (point) (progn (forward-symbol 1) (point))))
         (forward-char 3)     ;; " = "
         (setq result
               (append result
