@@ -293,12 +293,18 @@ This is the primary engine for the formatting algorithm"
         '())
 
       ;; return type
+      ;; might be absent if function is a constructor
+      ;; you can distinguish it from the function name because it is followed by whitespace, not '('
       (let ((tstart (point))
             (tend (progn (tspew--parse-type) (point))))
-        (skip-syntax-forward " ")
-        (tspew--format-region tstart tend))
-
-      (list (cons (point) 0))    ;; separate major sections with newlines
+        (if (equal (char-after) ?\()      ;; must be constructor name
+            (progn
+              (goto-char tstart)
+              '())
+          (skip-syntax-forward " ")       ;; consume whitespace
+          (append
+           (tspew--format-region tstart tend)
+           (list (cons (point) 0)))))     ;; newline between return type and function name
 
       (progn (tspew--parse-func-name) '())
 
@@ -669,8 +675,9 @@ It requires - and consumes - trailing whitespace"
             ;; BOZO actually not sure which of these keywords will appear first
             (tspew--parser-optional (tspew--parser-keyword "constexpr"))
             (tspew--parser-optional (tspew--parser-keyword "static"))
-            #'tspew--parse-type
-            #'tspew--parse-whitespace
+            ;; return type is optional because it could be a constructor
+            (tspew--parser-optional
+             (tspew--parser-sequential #'tspew--parse-type #'tspew--parse-whitespace))
             #'tspew--parse-func-name
             (tspew--parser-paren-expr ?\()
 
