@@ -383,6 +383,16 @@ This is the primary engine for the formatting algorithm"
      (tspew--format-region (point) tend)
      (list (cons tend 0)))))   ;; terminal newline
 
+(defun tspew--mark-operator-overloads (start end)
+  "Set text properties so that operatorXX function names, where XX is an operator,
+are considered symbols instead of parentheses"
+  (let ((opr-regex "operator\\(<<\\|<\\|>>\\|>\\|()\\|\\[]\\)"))  ;; the ones likely to cause trouble
+    (save-excursion
+      (goto-char start)
+      (while (re-search-forward opr-regex end t)
+        (with-silent-modifications
+          (put-text-property (match-beginning 1) (match-end 1) 'syntax-table (string-to-syntax "_")))))))
+
 ;; contents can be functions, function specializations, maybe other things?
 (defun tspew--handle-quoted-expr (tstart tend)
   "Fill and indent a single quoted expression (type or function) within an error message"
@@ -448,6 +458,7 @@ This is the primary engine for the formatting algorithm"
 
   (tspew--remove-overlays)
   (setq tspew--parse-start nil)
+  (set (make-local-variable 'parse-sexp-lookup-properties) t)  ;; so we can special-case character syntax
   )
 
 ;; create a compilation filter hook to incrementally parse errors
@@ -459,6 +470,11 @@ This is the primary engine for the formatting algorithm"
   ;; buffer offsets and are not "stable" in the iterator sense
   (if (not tspew--parse-start)
       (setq-local tspew--parse-start compilation-filter-start))
+
+  ;; ensure things like "operator()" are considered a single symbol,
+  ;; not a symbol followed by parens
+  (tspew--mark-operator-overloads tspew--parse-start (point))
+
   (while (and (< tspew--parse-start (point))
               (> (count-lines tspew--parse-start (point)) 1))
     ;; we have at least one newline in our working region
