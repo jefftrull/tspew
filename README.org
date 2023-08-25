@@ -1,4 +1,5 @@
 #+TITLE: tspew
+#+OPTIONS: TOC:nil
 
 * An Emacs minor mode for template-related errors in C++
 ~tspew~ addresses the "template spew" problem for C++ coders.
@@ -11,3 +12,11 @@ to eliminate run-on lines.
 ** In your init file:
 - ~(require 'tspew)~ or otherwise specify it should be loaded (e.g. with ~use-package~)
 - Ensure it runs during compilation with ~(add-hook 'compilation-mode-hook 'tspew-mode)~
+
+* Example
+
+#+CAPTION: Before
+[[./before.png]]
+
+#+CAPTION: After
+[[./after.png]]
