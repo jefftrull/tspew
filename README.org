@@ -1,12 +1,13 @@
-#+TITLE: tspew - an Emacs minor mode for viewing template-related errors in C++ compilation
+#+TITLE: tspew
 
-* tspew addresses the "template spew" problem for C++ coders
+* An Emacs minor mode for template-related errors in C++
+~tspew~ addresses the "template spew" problem for C++ coders.
 This minor mode runs during compilation of C++ code and reformats long error messages to be easier to read.
 It indents template type names according to their hierarchy, adding newlines as required
 to eliminate run-on lines.
 
 * Usage
-** Install tspew.el somewhere in your `load-path`
+** Install tspew.el somewhere in your ~load-path~
 ** In your init file:
 - ~(require 'tspew)~ or otherwise specify it should be loaded (e.g. with ~use-package~)
 - Ensure it runs during compilation with ~(add-hook 'compilation-mode-hook 'tspew-mode)~
