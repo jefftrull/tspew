@@ -222,7 +222,7 @@ This is the primary engine for the formatting algorithm"
         (tspew--scan printer)))
 
     (funcall printer 'result))
-))
+)
 
 (defun tspew--format-with-clause (start end)
   "Fill and indent region containing a with clause"
