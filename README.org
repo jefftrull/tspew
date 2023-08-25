@@ -18,5 +18,7 @@ to eliminate run-on lines.
 #+CAPTION: Before
 [[./before.png]]
 
+Becomes:
+
 #+CAPTION: After
 [[./after.png]]
