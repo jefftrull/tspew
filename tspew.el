@@ -258,7 +258,6 @@ This is the primary engine for the formatting algorithm"
                        (progn (tspew--parse-type) (point))
                        (+ (length tparam) 3)))))
       (forward-char)
-      (push (cons (point) 0) result)     ;; a newline after the final right bracket
       result)))  ;; skip trailing right bracket
 
 (defun tspew--format-function-region (start end)
@@ -320,19 +319,14 @@ This is the primary engine for the formatting algorithm"
             '())
         '())
 
-      ;; newline after parameter list plus (optional) memfn qualifier
-      (progn
-        (skip-syntax-forward " ")
-        (if (< (point) end)
-            (list (cons (point) 0))
-          '()))
-
       (if (< (point) end)
-          (progn (skip-syntax-forward " ")
-                 (let ((wc-start (point)))
-                   (if (tspew--parse-with-clause)
-                         (tspew--format-with-clause wc-start (point))
-                     '())))
+          (let ((wc-start (progn (skip-syntax-forward " ") (point))))
+            (if (tspew--parse-with-clause)
+                (append
+                  ;; newline before with clause, if present
+                  (list (cons wc-start 0))
+                  (tspew--format-with-clause wc-start (point)))
+              '()))
         '()))))
 
   ;; newlines in between these:
