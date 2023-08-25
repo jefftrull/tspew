@@ -527,7 +527,8 @@ This is the primary engine for the formatting algorithm"
   "Parse the const or volatile keywords"
   (if (or (looking-at "const\\s ") (looking-at "volatile\\s "))
       (progn
-        (skip-syntax-forward "w ")
+        (skip-syntax-forward "w")
+        (skip-syntax-forward " ")
         t)
     nil))
 
