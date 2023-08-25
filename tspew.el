@@ -392,7 +392,7 @@ This is the primary engine for the formatting algorithm"
 
     (when (equal 0 (length instructions))
       (message "no instructions produced for region |%s|" (buffer-substring tstart tend)))
-    (dolist (instr (tspew--format-quoted-expr tstart tend))
+    (dolist (instr instructions)
             (let* ((istart (car instr))
                    (indentation (cdr instr))
                    (ov (make-overlay istart istart)))
