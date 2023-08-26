@@ -416,7 +416,7 @@ are considered symbols instead of parentheses"
          ;; types and function signatures are enclosed by Unicode left and right single quotes
 
          ;; some surprising things can be in type names, because of "operator"
-         (type-regexp "\u2018\\([]\[[:alnum:]:()<>,&_ =+/*%^.;-]+\\)\u2019"))
+         (type-regexp "\\(\u2018\\|'\\)\\([]\[[:alnum:]:()<>,&_ =+/*%^.;-]+\\)\\(\u2019\\|'\\)"))
     (save-excursion
       (goto-char lstart)
       (if (and (looking-at err-regexp)  ;; error line
@@ -424,8 +424,8 @@ are considered symbols instead of parentheses"
                (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width))
         ;; while there is still a match remaining in the line:
         (while (re-search-forward type-regexp lend t)
-          (let ((tstart (match-beginning 1))
-                (tend (match-end 1)))
+          (let ((tstart (match-beginning 2))
+                (tend (match-end 2)))
             ;; process this region
             (tspew--handle-quoted-expr tstart tend)
             ;; mark region with depths within parentheses (or angle brackets)
@@ -485,8 +485,8 @@ The value nil will unfold all levels."
   ;; specifically, to see if we have truly begun inside a quoted region
   (if-let ((bol (save-excursion (beginning-of-line) (point)))
            (eol (save-excursion (end-of-line) (point)))
-           (start (save-excursion (and (search-backward "\u2018" bol t) (point))))
-           (end (save-excursion (and (search-forward "\u2019" eol t) (point)))))
+           (start (save-excursion (and (re-search-backward "\\(\u2018\\|'\\)" bol t) (point))))
+           (end (save-excursion (and (re-search-forward "\\(\u2019\\|'\\)" eol t) (point)))))
       (progn
         (tspew--fold-to-depth start end (and level (prefix-numeric-value level)))
         ;; remove indentation overlays from the region in preparation for reformatting
