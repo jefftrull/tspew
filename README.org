@@ -17,7 +17,7 @@ to eliminate run-on lines.
 - Formatting occurs as compilation results arrive and are complete when the compile finishes
 - To remove all formatting, exit the minor mode with ~M-x tspew-mode~
 ** Reducing detail in types
-- The command ~tspew-fold~, when run with a numeric argument, will replace text at or below that depth in parentheses (or brackets) with ellipses =...= A ~nil~ argument will restore everything.
+- The command ~tspew-fold~, when run with a numeric argument, will replace text around point that is at or below that depth in parentheses (or brackets) with ellipses =...= A ~nil~ argument will restore everything.
 - Currently, this command removes formatting as a side effect.
 
 * Example
