@@ -8,10 +8,18 @@ It indents template type names according to their hierarchy, adding newlines as 
 to eliminate run-on lines.
 
 * Usage
-** Install tspew.el somewhere in your ~load-path~
-** In your init file:
+** Installation
+*** Install tspew.el somewhere in your ~load-path~
+*** In your init file:
 - ~(require 'tspew)~ or otherwise specify it should be loaded (e.g. with ~use-package~)
 - Ensure it runs during compilation with ~(add-hook 'compilation-mode-hook 'tspew-mode)~
+** Displaying formatted types and functions within error messages
+- Formatting occurs as compilation results arrive and are complete when the compile finishes
+- To remove all formatting, exit the minor mode with ~M-x tspew-mode~
+** Reducing detail in types
+- The command ~tspew-fold~, when run with a numeric argument, will replace text at or below that depth in parentheses (or brackets) with ellipses =...=.
+A ~nil~ argument will restore everything.
+- Currently, this command removes formatting as a side effect.
 
 * Example
 

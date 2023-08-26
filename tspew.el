@@ -390,7 +390,7 @@ are considered symbols instead of parentheses"
 ;; contents can be functions, function specializations, maybe other things?
 (defun tspew--handle-quoted-expr (tstart tend)
   "Fill and indent a single quoted expression (type or function) within an error message"
-    ;; create an overlay covering the type
+    ;; create an overlay covering the expression
   (let ((ov (make-overlay tstart tend))
         (instructions (tspew--format-quoted-expr tstart tend)))
 
@@ -424,9 +424,12 @@ are considered symbols instead of parentheses"
                (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width))
         ;; while there is still a match remaining in the line:
         (while (re-search-forward type-regexp lend t)
-          (let ((tend (match-end 1)))
-            ;; process this type match
-            (tspew--handle-quoted-expr (match-beginning 1) tend)
+          (let ((tstart (match-beginning 1))
+                (tend (match-end 1)))
+            ;; process this region
+            (tspew--handle-quoted-expr tstart tend)
+            ;; mark region with depths within parentheses (or angle brackets)
+            (tspew--mark-depths tstart tend)
             ;; advance past matched text
             (goto-char tend)))))))
 
@@ -435,6 +438,63 @@ are considered symbols instead of parentheses"
 ;; we've come
 (defvar-local tspew--parse-start nil
   "Starting point for incremental error parsing." )
+
+;;
+;; depth-based folding support
+;;
+
+(defun tspew--mark-depths (start end)
+  "Mark regions of text inside parentheses/angle brackets
+with their depths, as an overlay property"
+  (save-excursion
+    (goto-char start)
+    (let ((pos-stack nil))
+      (while (not (equal (point) end))
+        (cl-case (char-syntax (char-after))
+          (?\(
+           (push (+ (point) 1) pos-stack))
+          (?\)
+           (let ((ov (make-overlay (car pos-stack) (point))))
+             (overlay-put ov 'tspew-depth (length pos-stack))
+             (overlay-put ov 'is-tspew t)
+             (pop pos-stack)))
+          (t nil))
+        (forward-char 1)))))
+
+(defun tspew--fold-to-depth (start end level)
+  "Hide text regions with depth >= level.
+When level is nil, all regions are made visible"
+  (dolist
+      (ov (overlays-in start end))
+    (when-let ((depth (overlay-get ov 'tspew-depth)))
+      (if (and level (>= depth level))
+          (progn
+            (overlay-put ov 'invisible t)
+            (if (equal depth level)
+                (overlay-put ov 'before-string "...")))
+        (overlay-put ov 'invisible nil)
+        (overlay-put ov 'before-string nil)))))
+
+(defun tspew-fold (&optional level)
+  "Fold the quoted region containing point to the requested level.
+Text at the designated level, or deeper, will be replaced with ellipses.
+The value nil will unfold all levels."
+  (interactive "P")
+  ;; find the quoted region containing point
+  ;; TODO this would be a good place for some user error checking...
+  ;; specifically, to see if we have truly begun inside a quoted region
+  (if-let ((bol (save-excursion (beginning-of-line) (point)))
+           (eol (save-excursion (end-of-line) (point)))
+           (start (save-excursion (and (search-backward "\u2018" bol t) (point))))
+           (end (save-excursion (and (search-forward "\u2019" eol t) (point)))))
+      (progn
+        (tspew--fold-to-depth start end (and level (prefix-numeric-value level)))
+        ;; remove indentation overlays from the region in preparation for reformatting
+        (dolist (ov (overlays-in start end))
+          (when (and (overlay-get ov 'is-tspew) (not (overlay-get ov 'tspew-depth)))
+            (delete-overlay ov))))
+    (error "Not inside a quoted region")))
+
 
 (defun tspew--remove-overlays ()
   (let ((overlays (seq-filter (lambda (ov) (overlay-get ov 'is-tspew))
