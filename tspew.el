@@ -270,21 +270,21 @@ This is the primary engine for the formatting algorithm"
      (append
 
       ;; template<class X, class Y...> if present
-      (if (looking-at "template<")
+      (if (looking-at-p "template<")
           (let ((result (tspew--format-template-preamble (point) (progn (tspew--parse-template-preamble) (point)))))
             (skip-syntax-forward " ")
             result)
         '())
 
       ;; constexpr and/or static (both optional)
-      (if (looking-at "constexpr ")
+      (if (looking-at-p "constexpr ")
           (progn
             (forward-word)
             (skip-syntax-forward " ")
             '())
         '())
 
-      (if (looking-at "static ")
+      (if (looking-at-p "static ")
           (progn
             (forward-word)
             (skip-syntax-forward " ")
@@ -416,10 +416,10 @@ are considered symbols instead of parentheses"
          ;; types and function signatures are enclosed by Unicode left and right single quotes
 
          ;; some surprising things can be in type names, because of "operator"
-         (type-regexp "\\(\u2018\\|'\\)\\([]\[[:alnum:]:()<>,&_ =+/*%^.;-]+\\)\\(\u2019\\|'\\)"))
+         (type-regexp "\\(\u2018\\|'\\)\\([][[:alnum:]:()<>,&_ =+/*%^.;-]+\\)\\(\u2019\\|'\\)"))
     (save-excursion
       (goto-char lstart)
-      (if (and (looking-at err-regexp)  ;; error line
+      (if (and (looking-at-p err-regexp)  ;; error line
                ;; the line is too long
                (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width))
         ;; while there is still a match remaining in the line:
@@ -595,7 +595,7 @@ The value nil will unfold all levels."
 
 (defun tspew--parse-cv ()
   "Parse the const or volatile keywords"
-  (if (or (looking-at "const\\s ") (looking-at "volatile\\s "))
+  (if (or (looking-at-p "const\\s ") (looking-at "volatile\\s "))
       (progn
         (skip-syntax-forward "w")
         (skip-syntax-forward " ")
@@ -613,7 +613,7 @@ The value nil will unfold all levels."
 
 (defun tspew--parse-template-preamble ()
   "Parse the initial template<class X, class Y...> in function template specializations"
-  (if (looking-at "template<")
+  (if (looking-at-p "template<")
       (progn
         (forward-word 1)
         (forward-sexp 1)
@@ -623,7 +623,7 @@ The value nil will unfold all levels."
 
 (defun tspew--parse-with-clause ()
   "Parse a type elaboration for function template instantiations of the form \"[with X = Y; Q = R; ...]\""
-  (if (looking-at "\\[with ")
+  (if (looking-at-p "\\[with ")
       (progn
         (forward-sexp)
         t)
@@ -651,7 +651,7 @@ The value nil will unfold all levels."
   "Create a parser for a pre-selected keyword.
 It requires - and consumes - trailing whitespace"
   (lambda ()
-    (if (looking-at (concat kwd "\\s "))   ;; trailing whitespace required
+    (if (looking-at-p (concat kwd "\\s "))   ;; trailing whitespace required
         (progn
           (forward-char (length kwd))
           (skip-syntax-forward " ")
