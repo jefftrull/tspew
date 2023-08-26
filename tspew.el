@@ -307,27 +307,31 @@ This is the primary engine for the formatting algorithm"
 
       (progn (tspew--parse-func-name) '())
 
-      (list (cons (point) 0))
+      ;; at this point we could end with a clang-style function template specialization
+      (if-let ((fun-spl-end (save-excursion (and (funcall (tspew--parser-paren-expr ?<)) (point)))))
+          (tspew--format-region (point) fun-spl-end)
 
-      (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
+        ;; otherwise it's the gcc possibilities: parameters, member function qualifiers, with clause
+        (list (cons (point) 0))
+        (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
 
-      ;; skip trailing space and memfn qual, if present
-      (if (< (point) end)
-          (progn
-            (skip-syntax-forward " ")
-            (funcall (tspew--parser-memfn-qual))
-            '())
-        '())
+        ;; skip trailing space and memfn qual, if present
+        (if (< (point) end)
+            (progn
+              (skip-syntax-forward " ")
+              (funcall (tspew--parser-memfn-qual))
+              '())
+          '())
 
-      (if (< (point) end)
-          (let ((wc-start (progn (skip-syntax-forward " ") (point))))
-            (if (tspew--parse-with-clause)
-                (append
-                  ;; newline before with clause, if present
-                  (list (cons wc-start 0))
-                  (tspew--format-with-clause wc-start (point)))
-              '()))
-        '()))))
+        (if (< (point) end)
+            (let ((wc-start (progn (skip-syntax-forward " ") (point))))
+              (if (tspew--parse-with-clause)
+                  (append
+                   ;; newline before with clause, if present
+                   (list (cons wc-start 0))
+                   (tspew--format-with-clause wc-start (point)))
+                '()))
+          '())))))
 
   ;; newlines in between these:
   ;; 1) output static if present
@@ -750,12 +754,23 @@ It requires - and consumes - trailing whitespace"
             (tspew--parser-optional
              (tspew--parser-sequential #'tspew--parse-type #'tspew--parse-whitespace))
             #'tspew--parse-func-name
-            (tspew--parser-paren-expr ?\()
+            (tspew--parser-alternative
 
-            (tspew--parser-optional
+             ;; gcc, and clang sometimes
              (tspew--parser-sequential
-              #'tspew--parse-whitespace
+              (tspew--parser-paren-expr ?\()
+
               (tspew--parser-optional
-               (tspew--parser-memfn-qual))        ;; member function qualifier
-              (tspew--parser-optional
-               #'tspew--parse-with-clause))))))   ;; with clause (like "[with X = Y, P = Q...]")
+               (tspew--parser-sequential
+                #'tspew--parse-whitespace
+                (tspew--parser-optional
+                 (tspew--parser-memfn-qual))        ;; member function qualifier
+                (tspew--parser-optional
+                 #'tspew--parse-with-clause))))     ;; with clause (like "[with X = Y, P = Q...]")
+
+             ;; clang's special function template specialization format (no "with" clause, no param list)
+             ;; ::fname<T, U...> vs
+             ;; ::fname(T, U...) [with T = X, U = Y...] in gcc
+             (tspew--parser-paren-expr ?<)
+
+))))
