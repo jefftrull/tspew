@@ -431,7 +431,7 @@ are considered symbols instead of parentheses"
             ;; mark region with depths within parentheses (or angle brackets)
             (tspew--mark-depths tstart tend)
             ;; advance past matched text
-            (goto-char tend)))))))
+            (goto-char (+ tend 1))))))))
 
 ;; remember where we are in the buffer
 ;; the compilation filter may give us partial lines, so we have to keep track of how far
