@@ -433,6 +433,8 @@ This includes operator overloads, lambdas, and anonymous classes"
     (save-excursion
       (goto-char lstart)
       (if (and (looking-at-p err-regexp)  ;; error line
+               ;; ignore static asserts (too complex! plus, what would we do with them?)
+               (not (save-excursion (search-forward "static_assert" lend t)))
                ;; the line is too long
                (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width))
         ;; while there is still a match remaining in the line:
