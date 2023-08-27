@@ -645,6 +645,14 @@ The value nil will unfold all levels."
         t)
     nil))
 
+(defun tspew--parse-ref-modifier ()
+  "Parse a pointer, ref, or rvalue ref"
+  (if (looking-at-p "\\*\\|&\\|&&")
+      (progn
+        (skip-syntax-forward "_")
+        t)
+    nil))
+
 ;;
 ;; parser generators (take a param, return a parser)
 ;;
@@ -735,7 +743,7 @@ It requires - and consumes - trailing whitespace"
   ;; cv qualifier, followed by symbol, followed optionally
   ;; by a parenthesized expression (angle brackets), followed
   ;; optionally by a symbol (member types, pointer/ref indicators, etc.)
-  ;; type := decltype '(' expr ')' | [ cv ] symbol [ sexp [ symbol ] ] ]
+  ;; type := decltype '(' expr ')' | [ cv ] symbol [ sexp [ symbol ] ] ] [ & | && | * ]
   ;; e.g.     const std::vector<double>::iterator
   ;;          ^- cv ^-symbol   ^- sexp ^-symbol
   (funcall (tspew--parser-alternative
@@ -752,7 +760,10 @@ It requires - and consumes - trailing whitespace"
              #'tspew--parse-symbol
              (tspew--parser-optional (tspew--parser-sequential
                                      (tspew--parser-paren-expr ?<)
-                                     (tspew--parser-optional #'tspew--parse-symbol)))))))
+                                     (tspew--parser-optional #'tspew--parse-symbol)))
+             (tspew--parser-optional (tspew--parser-sequential
+                                      (tspew--parser-optional #'tspew--parse-whitespace)
+                                      #'tspew--parse-ref-modifier))))))
 
 (defun tspew--parse-function ()
   "Parse a function signature, as found in compiler error messages"
