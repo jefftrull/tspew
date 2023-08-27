@@ -381,15 +381,19 @@ This is the primary engine for the formatting algorithm"
      (tspew--format-region (point) tend)
      (list (cons tend 0)))))   ;; terminal newline
 
-(defun tspew--mark-operator-overloads (start end)
-  "Set text properties so that operatorXX function names, where XX is an operator,
-are considered symbols instead of parentheses"
-  (let ((opr-regex "operator\\(<<\\|<\\|>>\\|>\\|()\\|\\[]\\)"))  ;; the ones likely to cause trouble
+(defun tspew--mark-special-case-symbols (start end)
+  "Mark various tricky elements so they are considered \"symbol constituents\"
+This includes operator overloads, lambdas, and anonymous classes"
+  (let ((opr-regex "operator\\(<<\\|<\\|>>\\|>\\|()\\|\\[]\\)")
+        (anon-class-regex "(anonymous class)")
+        (lambda-regex "(lambda at [[:alnum:]_/.-]+:[0-9]+:[0-9]+)"))
     (save-excursion
       (goto-char start)
-      (while (re-search-forward opr-regex end t)
+      (while (re-search-forward
+              (concat "\\(" opr-regex "\\)\\|\\(" anon-class-regex "\\)\\|\\(" lambda-regex "\\)")
+              end t)
         (with-silent-modifications
-          (put-text-property (match-beginning 1) (match-end 1) 'syntax-table (string-to-syntax "_")))))))
+          (put-text-property (match-beginning 0) (match-end 0) 'syntax-table (string-to-syntax "_")))))))
 
 ;; contents can be functions, function specializations, maybe other things?
 (defun tspew--handle-quoted-expr (tstart tend)
@@ -530,8 +534,9 @@ The value nil will unfold all levels."
       (setq-local tspew--parse-start compilation-filter-start))
 
   ;; ensure things like "operator()" are considered a single symbol,
-  ;; not a symbol followed by parens
-  (tspew--mark-operator-overloads tspew--parse-start (point))
+  ;; not a symbol followed by parens. The same is true of anonymous classes
+  ;; and lambdas, both of which have printed representations containing parens.
+  (tspew--mark-special-case-symbols tspew--parse-start (point))
 
   (while (and (< tspew--parse-start (point))
               (> (count-lines tspew--parse-start (point)) 1))
