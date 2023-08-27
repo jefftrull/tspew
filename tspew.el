@@ -424,7 +424,12 @@ This includes operator overloads, lambdas, and anonymous classes"
          ;; types and function signatures are enclosed by Unicode left and right single quotes
 
          ;; some surprising things can be in type names, because of "operator"
-         (type-regexp "\\(\u2018\\|'\\)\\([][[:alnum:]:()<>,&_ =+/*%^.;-]+\\)\\(\u2019\\|'\\)"))
+         (quote-start-regexp "\\(\u2018\\|'\\)")
+         (quote-end-regexp "\\(\u2019\\|'\\)")
+         (char-lit-regexp "\\('[^']'\\)")
+         (allowed-char-regexp "[][[:alnum:]:()<>,&_ =+/*%^.;-]")
+         (type-regexp
+          (concat quote-start-regexp "\\(" char-lit-regexp "\\|" allowed-char-regexp "\\)+" quote-end-regexp)))
     (save-excursion
       (goto-char lstart)
       (if (and (looking-at-p err-regexp)  ;; error line
@@ -432,8 +437,8 @@ This includes operator overloads, lambdas, and anonymous classes"
                (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width))
         ;; while there is still a match remaining in the line:
         (while (re-search-forward type-regexp lend t)
-          (let ((tstart (match-beginning 2))
-                (tend (match-end 2)))
+          (let ((tstart (+ (match-beginning 0) 1))
+                (tend (- (match-end 0) 1)))
             ;; process this region
             (tspew--handle-quoted-expr tstart tend)
             ;; mark region with depths within parentheses (or angle brackets)
