@@ -427,7 +427,7 @@ This includes operator overloads, lambdas, and anonymous classes"
          (quote-start-regexp "\\(\u2018\\|'\\)")
          (quote-end-regexp "\\(\u2019\\|'\\)")
          (char-lit-regexp "\\('[^']'\\)")
-         (allowed-char-regexp "[][[:alnum:]:()<>,&_ =+/*%^.;-]")
+         (allowed-char-regexp "[][[:alnum:]:()<>,&_ =+/*%^.;-{}]")
          (type-regexp
           (concat quote-start-regexp "\\(" char-lit-regexp "\\|" allowed-char-regexp "\\)+" quote-end-regexp)))
     (save-excursion
