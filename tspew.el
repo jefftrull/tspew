@@ -721,6 +721,13 @@ It requires - and consumes - trailing whitespace"
         (goto-char start)
         nil))))
 
+(defun tspew--parser-multiple (p)
+  "Create a parser that parses one or more of the input parser, greedily.
+To parse zero or more, combine with tspew--parser-optional"
+  (lambda ()
+    (and (funcall p)      ;; at least one
+         (while (funcall p) t))))
+
 ;;
 ;; parser utilities
 ;;
@@ -749,14 +756,19 @@ It requires - and consumes - trailing whitespace"
   (funcall (tspew--parser-alternative
             ;; decltype expression
             (tspew--parser-sequential
+             (tspew--parser-optional (tspew--parser-keyword "constexpr"))
              (tspew--parser-keyword "decltype")
              (tspew--parser-paren-expr ?\())
             (tspew--parser-sequential
              ;; stuff we might see in here: typename, const, volatile
              (tspew--parser-optional
-              (tspew--parser-alternative
-               (tspew--parser-keyword "typename")
-               #'tspew--parse-cv))
+              (tspew--parser-multiple
+               (tspew--parser-alternative
+                (tspew--parser-keyword "typename")
+                (tspew--parser-keyword "constexpr")
+                (tspew--parser-keyword "auto")
+                (tspew--parser-keyword "struct")
+                #'tspew--parse-cv)))
              #'tspew--parse-symbol
              (tspew--parser-optional (tspew--parser-sequential
                                      (tspew--parser-paren-expr ?<)
