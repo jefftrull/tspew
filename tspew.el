@@ -385,7 +385,7 @@ This is the primary engine for the formatting algorithm"
   "Mark various tricky elements so they are considered \"symbol constituents\"
 This includes operator overloads, lambdas, and anonymous classes"
   (let ((opr-regex "operator\\(<<\\|<\\|>>\\|>\\|()\\|\\[]\\)")
-        (anon-class-regex "(anonymous class)")
+        (anon-class-regex "(anonymous class)\\|{anonymous}")
         (lambda-regex "(lambda at [[:alnum:]_/.-]+:[0-9]+:[0-9]+)"))
     (save-excursion
       (goto-char start)
@@ -434,7 +434,7 @@ This includes operator overloads, lambdas, and anonymous classes"
       (goto-char lstart)
       (if (and (looking-at-p err-regexp)  ;; error line
                ;; ignore static asserts (too complex! plus, what would we do with them?)
-               (not (save-excursion (search-forward "static_assert" lend t)))
+               (not (save-excursion (re-search-forward "static_assert\\|static assertion" lend t)))
                ;; the line is too long
                (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width))
         ;; while there is still a match remaining in the line:
