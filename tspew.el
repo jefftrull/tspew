@@ -725,8 +725,10 @@ It requires - and consumes - trailing whitespace"
   "Create a parser that parses one or more of the input parser, greedily.
 To parse zero or more, combine with tspew--parser-optional"
   (lambda ()
-    (and (funcall p)      ;; at least one
-         (while (funcall p) t))))
+    (and (funcall p)            ;; at least one
+         (progn
+           (while (funcall p))  ;; run until one fails
+           t))))                ;; and return true
 
 ;;
 ;; parser utilities
