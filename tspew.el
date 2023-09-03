@@ -385,13 +385,13 @@ This is the primary engine for the formatting algorithm"
 (defun tspew--mark-special-case-symbols (start end)
   "Mark various tricky elements so they are considered \"symbol constituents\"
 This includes operator overloads, lambdas, and anonymous classes"
-  (let ((opr-regex "operator\\(<<\\|<\\|>>\\|>\\|()\\|\\[]\\)")
-        (anon-class-regex "(anonymous class)\\|{anonymous}")
-        (lambda-regex "(lambda at [[:alnum:]_/.-]+:[0-9]+:[0-9]+)"))
+  (let ((opr-regexp "operator\\(<<\\|<\\|>>\\|>\\|()\\|\\[]\\)")
+        (anon-class-regexp "(anonymous class)\\|{anonymous}")
+        (lambda-regexp "(lambda at [[:alnum:]_/.-]+:[0-9]+:[0-9]+)"))
     (save-excursion
       (goto-char start)
       (while (re-search-forward
-              (concat "\\(" opr-regex "\\)\\|\\(" anon-class-regex "\\)\\|\\(" lambda-regex "\\)")
+              (concat "\\(" opr-regexp "\\)\\|\\(" anon-class-regexp "\\)\\|\\(" lambda-regexp "\\)")
               end t)
         (with-silent-modifications
           (put-text-property (match-beginning 0) (match-end 0) 'syntax-table (string-to-syntax "_")))))))
