@@ -346,29 +346,30 @@ This is the primary engine for the formatting algorithm"
   ;; We check to see which one we have. Types are simple. For functions, we break them up into chunks
   ;; separated by whitespace, like "return type" "function parameter list" or "with clause"
   ;; and format those separately using the indent/fill algorithm
-  (with-syntax-table tspew-syntax-table
-    (save-excursion
-      (let ((result (list (cons tstart 0))))   ;; initial newline
-        (goto-char tstart)
-        (cond
-         ((tspew--parse-function)
-          (when (not (equal (point) tend))
-            (message "found a function: |%s| but it does not fill the quoted expression |%s|"
-                     (buffer-substring tstart (point))
-                     (buffer-substring tstart tend)))
-          (append result (tspew--format-function-region tstart (point))))
+  (with-restriction tstart tend
+    (with-syntax-table tspew-syntax-table
+      (save-excursion
+        (let ((result (list (cons tstart 0))))   ;; initial newline
+          (goto-char tstart)
+          (cond
+           ((tspew--parse-function)
+            (when (not (equal (point) tend))
+              (message "found a function: |%s| but it does not fill the quoted expression |%s|"
+                       (buffer-substring tstart (point))
+                       (buffer-substring tstart tend)))
+            (append result (tspew--format-function-region tstart (point))))
 
-         ((tspew--parse-type)
-          (when (not (equal (point) tend))
-            (message "found a type: |%s| but it does not fill the quoted expression |%s|"
-                     (buffer-substring tstart (point))
-                     (buffer-substring tstart tend)))
-          (append result (tspew--format-region tstart (point))))
+           ((tspew--parse-type)
+            (when (not (equal (point) tend))
+              (message "found a type: |%s| but it does not fill the quoted expression |%s|"
+                       (buffer-substring tstart (point))
+                       (buffer-substring tstart tend)))
+            (append result (tspew--format-region tstart (point))))
 
-         (t
-          (message (format "Found a quoted expression I don't understand: |%s|"
-                           (buffer-substring tstart tend)))
-          nil))))))
+           (t
+            (message (format "Found a quoted expression I don't understand: |%s|"
+                             (buffer-substring tstart tend)))
+            nil)))))))
 
 (defun tspew--format-template-preamble (tstart tend)
   "Format a function template preamble e.g. template<class X, class Y, class Z>"
