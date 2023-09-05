@@ -28,7 +28,7 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
 
 ;; the beginnings of tspew-mode
 ;; first, a syntax table for error messages
-(defvar tspew-syntax-table (standard-syntax-table)
+(defvar tspew-syntax-table (make-syntax-table)
   "Syntax table for lexing compiler errors" )
 ;; modify to suit our needs
 ;; BOZO may be unnecessary - default syntax table appears to do these things already:
