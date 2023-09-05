@@ -31,19 +31,12 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
 (defvar tspew-syntax-table (make-syntax-table)
   "Syntax table for lexing compiler errors" )
 ;; modify to suit our needs
-;; BOZO may be unnecessary - default syntax table appears to do these things already:
 ;; left and right angle brackets are a kind of parentheses in type names
 (modify-syntax-entry ?< "(>" tspew-syntax-table)
 (modify-syntax-entry ?> ")<" tspew-syntax-table)
-;; left and right square brackets are used as parentheses for the "with" clause in a function name
-(modify-syntax-entry ?< "([" tspew-syntax-table)
-(modify-syntax-entry ?> ")]" tspew-syntax-table)
 
 ;; colon is a "symbol constituent" - usable in identifiers
 (modify-syntax-entry ?: "_" tspew-syntax-table)
-;; & and * can be present after any type. symbol constituent seems right
-(modify-syntax-entry ?& "_" tspew-syntax-table)
-(modify-syntax-entry ?* "_" tspew-syntax-table)
 
 ;; now we can use (with-symbol-table tspew-syntax-table (movement-fn))
 
