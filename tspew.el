@@ -224,10 +224,19 @@ This is the primary engine for the formatting algorithm"
   (save-excursion
     (let* ((start (+ start 6))    ;; "[with "
            (end (- end 1))        ;; directly before "]"
-           (tparam (progn (goto-char start) (forward-symbol 1) (buffer-substring start (point))))
            (result (list (cons start 0)))  ;; a single newline after "[with "
            (parse-rhs
-            (tspew--parser-alternative #'tspew--parse-sequence #'tspew--parse-type)))
+            (tspew--parser-alternative #'tspew--parse-sequence #'tspew--parse-type))
+           (parse-with-stmt-tparam
+            (lambda ()
+              (when (looking-at "\\.\\.\\.") (forward-char 3))  ;; skip ellipses, which looks like punctuation
+              (tspew--parse-type)))
+           (tparam
+            (progn
+              (goto-char start)
+              (funcall (tspew--parser-builtin-int-type))        ;; this might be an integral NTTP
+              (funcall parse-with-stmt-tparam)                  ;; skip name
+              (buffer-substring start (point)))))
 
       ;; do first X = Y pair
       (forward-char 3)   ;; skip " = "
@@ -244,7 +253,12 @@ This is the primary engine for the formatting algorithm"
 
         (skip-syntax-forward " ")
         (setq tparam
-              (buffer-substring (point) (progn (forward-symbol 1) (point))))
+              (buffer-substring (point)
+                                (progn
+                                  (funcall (tspew--parser-builtin-int-type))
+                                  (funcall parse-with-stmt-tparam)
+                                  (point))))
+
         (forward-char 3)     ;; " = "
         (setq result
               (append result
@@ -749,6 +763,21 @@ To parse zero or more, combine with tspew--parser-optional"
   (forward-sexp)
   )
 
+(defun tspew--parser-builtin-int-type ()
+  "Parse a builtin C++ integral type (int/char with modifiers), with following whitespace"
+  (tspew--parser-alternative
+   (tspew--parser-sequential
+    (tspew--parser-optional (tspew--parser-keyword "unsigned"))
+    (tspew--parser-keyword "char"))
+   (tspew--parser-sequential
+    (tspew--parser-optional
+     (tspew--parser-multiple
+      (tspew--parser-alternative
+       (tspew--parser-keyword "long")
+       (tspew--parser-keyword "short")
+       (tspew--parser-keyword "unsigned"))))
+    (tspew--parser-keyword "int"))))
+
 (defun tspew--parse-type ()
   "Parse a type as found in compiler error messages"
   ;; either a parenthesized decltype expression, OR
@@ -774,10 +803,16 @@ To parse zero or more, combine with tspew--parser-optional"
                 (tspew--parser-keyword "auto")
                 (tspew--parser-keyword "struct")
                 #'tspew--parse-cv)))
-             #'tspew--parse-symbol
-             (tspew--parser-optional (tspew--parser-sequential
-                                     (tspew--parser-paren-expr ?<)
-                                     (tspew--parser-optional #'tspew--parse-symbol)))
+             ;; then either
+             (tspew--parser-alternative
+              ;; a builtin int of some kind, or
+              (tspew--parser-builtin-int-type)
+              ;; a user-defined type (or float or double, which look like types)
+              (tspew--parser-sequential
+               #'tspew--parse-symbol
+               (tspew--parser-optional (tspew--parser-sequential
+                                        (tspew--parser-paren-expr ?<)
+                                        (tspew--parser-optional #'tspew--parse-symbol)))))
              (tspew--parser-optional (tspew--parser-sequential
                                       (tspew--parser-optional #'tspew--parse-whitespace)
                                       #'tspew--parse-ref-modifier))))))
