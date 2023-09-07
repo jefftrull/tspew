@@ -314,7 +314,10 @@ This is the primary engine for the formatting algorithm"
            (tspew--format-region tstart tend)
            (list (cons (point) 0)))))     ;; newline between return type and function name
 
-      (progn (tspew--parse-func-name) '())
+      ;; even the function name can require formatting
+      (append
+       (tspew--format-region (point) (progn (tspew--parse-func-name) (point)))
+       (list (cons (point) 0)))
 
       ;; at this point we could end with a clang-style function template specialization
       (if-let ((fun-spl-end (save-excursion (and (funcall (tspew--parser-paren-expr ?<)) (point)))))
@@ -324,6 +327,13 @@ This is the primary engine for the formatting algorithm"
         (append
          (list (cons (point) 0))
          (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
+
+         ;; the param list may be followed by (no whitespace) "::" and a type, also requiring formatting
+         (if (looking-at "::")
+             (append
+              (list (cons (point) 0))
+              (tspew--format-region (point) (progn (tspew--parse-type) (point))))
+           '())
 
          ;; skip trailing space and memfn qual, if present
          (if (< (point) end)
@@ -841,6 +851,8 @@ To parse zero or more, combine with tspew--parser-optional"
              ;; gcc, and clang sometimes
              (tspew--parser-sequential
               (tspew--parser-paren-expr ?\()
+              (tspew--parser-optional #'tspew--parse-symbol)  ;; ::stuff after the rparen
+
 
               (tspew--parser-optional
                (tspew--parser-sequential
