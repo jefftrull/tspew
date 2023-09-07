@@ -321,26 +321,27 @@ This is the primary engine for the formatting algorithm"
           (tspew--format-region (point) fun-spl-end)
 
         ;; otherwise it's the gcc possibilities: parameters, member function qualifiers, with clause
-        (list (cons (point) 0))
-        (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
+        (append
+         (list (cons (point) 0))
+         (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
 
-        ;; skip trailing space and memfn qual, if present
-        (if (< (point) end)
-            (progn
-              (skip-syntax-forward " ")
-              (funcall (tspew--parser-memfn-qual))
-              '())
-          '())
+         ;; skip trailing space and memfn qual, if present
+         (if (< (point) end)
+             (progn
+               (skip-syntax-forward " ")
+               (funcall (tspew--parser-memfn-qual))
+               '())
+           '())
 
-        (if (< (point) end)
-            (let ((wc-start (progn (skip-syntax-forward " ") (point))))
-              (if (tspew--parse-with-clause)
-                  (append
-                   ;; newline before with clause, if present
-                   (list (cons wc-start 0))
-                   (tspew--format-with-clause wc-start (point)))
-                '()))
-          '())))))
+         (if (< (point) end)
+             (let ((wc-start (progn (skip-syntax-forward " ") (point))))
+               (if (tspew--parse-with-clause)
+                   (append
+                    ;; newline before with clause, if present
+                    (list (cons wc-start 0))
+                    (tspew--format-with-clause wc-start (point)))
+                 '()))
+           '()))))))
 
   ;; newlines in between these:
   ;; 1) output static if present
