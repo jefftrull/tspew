@@ -406,11 +406,12 @@ This is the primary engine for the formatting algorithm"
 This includes operator overloads, lambdas, and anonymous classes"
   (let ((opr-regexp "operator\\(<<\\|<\\|>>\\|>\\|()\\|\\[]\\)")
         (anon-class-regexp "(anonymous class)\\|{anonymous}")
-        (lambda-regexp "(lambda at [[:alnum:]_/.-]+:[0-9]+:[0-9]+)"))
+        (lambda-clang-regexp "(lambda at [[:alnum:]_/.-]+:[0-9]+:[0-9]+)")
+        (lambda-gcc-regexp "<lambda([^)]+)>"))
     (save-excursion
       (goto-char start)
       (while (re-search-forward
-              (concat "\\(" opr-regexp "\\)\\|\\(" anon-class-regexp "\\)\\|\\(" lambda-regexp "\\)")
+              (concat "\\(" opr-regexp "\\)\\|\\(" anon-class-regexp "\\)\\|\\(" lambda-clang-regexp "\\)\\|\\(" lambda-gcc-regexp "\\)")
               end t)
         (with-silent-modifications
           (put-text-property (match-beginning 0) (match-end 0) 'syntax-table (string-to-syntax "_")))))))
