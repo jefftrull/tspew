@@ -325,7 +325,6 @@ This is the primary engine for the formatting algorithm"
 
         ;; otherwise it's the gcc possibilities: parameters, member function qualifiers, with clause
         (append
-         (list (cons (point) 0))
          (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
 
          ;; the param list may be followed by (no whitespace) "::" and a type, also requiring formatting
