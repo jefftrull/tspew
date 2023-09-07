@@ -795,25 +795,31 @@ To parse zero or more, combine with tspew--parser-optional"
              (tspew--parser-keyword "decltype")
              (tspew--parser-paren-expr ?\())
             (tspew--parser-sequential
-             ;; stuff we might see in here: typename, const, volatile
+             ;; first, we can have const/constexpr/volatile
              (tspew--parser-optional
               (tspew--parser-multiple
                (tspew--parser-alternative
-                (tspew--parser-keyword "typename")
                 (tspew--parser-keyword "constexpr")
-                (tspew--parser-keyword "auto")
-                (tspew--parser-keyword "struct")
                 #'tspew--parse-cv)))
-             ;; then either
+             ;; then one of three things
              (tspew--parser-alternative
-              ;; a builtin int of some kind, or
+              ;; a builtin int of some kind
               (tspew--parser-builtin-int-type)
               ;; a user-defined type (or float or double, which look like types)
               (tspew--parser-sequential
+               ;; we sometimes see typename or struct first
+               (tspew--parser-optional
+                (tspew--parser-alternative
+                 (tspew--parser-keyword "typename")
+                 (tspew--parser-keyword "auto")
+                 (tspew--parser-keyword "struct")))
+               ;; the base name of the type
                #'tspew--parse-symbol
+               ;; template args if any
                (tspew--parser-optional (tspew--parser-sequential
                                         (tspew--parser-paren-expr ?<)
                                         (tspew--parser-optional #'tspew--parse-symbol)))))
+             ;; any of the above can have reference modifiers
              (tspew--parser-optional (tspew--parser-sequential
                                       (tspew--parser-optional #'tspew--parse-whitespace)
                                       #'tspew--parse-ref-modifier))))))
