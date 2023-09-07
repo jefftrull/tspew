@@ -632,47 +632,43 @@ The value nil will unfold all levels."
 
 (defun tspew--parse-cv ()
   "Parse the const or volatile keywords"
-  (if (or (looking-at-p "const\\s ") (looking-at "volatile\\s "))
+  (and (or (looking-at-p "const\\s ") (looking-at "volatile\\s "))
       (progn
         (skip-syntax-forward "w")
         (skip-syntax-forward " ")
-        t)
-    nil))
+        t)))
 
 ;; mandatory whitespace
 (defun tspew--parse-whitespace ()
   "Parse one or more whitespace characters"
   (let ((start (point)))
-    (if (> (skip-syntax-forward " ") 0)
-        t
-      (goto-char start)
-      nil)))
+    (or (> (skip-syntax-forward " ") 0)
+        (progn
+          (goto-char start)
+          nil))))
 
 (defun tspew--parse-template-preamble ()
   "Parse the initial template<class X, class Y...> in function template specializations"
-  (if (looking-at-p "template<")
+  (and (looking-at-p "template<")
       (progn
         (forward-word 1)
         (forward-sexp 1)
         (skip-syntax-forward " ")
-        t)
-    nil))
+        t)))
 
 (defun tspew--parse-with-clause ()
   "Parse a type elaboration for function template instantiations of the form \"[with X = Y; Q = R; ...]\""
-  (if (looking-at-p "\\[with ")
+  (and (looking-at-p "\\[with ")
       (progn
         (forward-sexp)
-        t)
-    nil))
+        t)))
 
 (defun tspew--parse-ref-modifier ()
   "Parse a pointer, ref, or rvalue ref"
-  (if (looking-at-p "\\*\\|&\\|&&")
+  (and (looking-at-p "\\*\\|&\\|&&")
       (progn
         (skip-syntax-forward "_")
-        t)
-    nil))
+        t)))
 
 (defun tspew--parse-sequence ()
   "Parse a curly braced sequence (i.e. of types or integers)"
@@ -703,12 +699,11 @@ The value nil will unfold all levels."
   "Create a parser for a pre-selected keyword.
 It requires - and consumes - trailing whitespace"
   (lambda ()
-    (if (looking-at-p (concat kwd "\\s "))   ;; trailing whitespace required
+    (and (looking-at-p (concat kwd "\\s "))   ;; trailing whitespace required
         (progn
           (forward-char (length kwd))
           (skip-syntax-forward " ")
-          t)
-      nil)))
+          t))))
 
 (defun tspew--parser-memfn-qual ()
   "Parse a member function qualifier, consuming trailing whitespace"
