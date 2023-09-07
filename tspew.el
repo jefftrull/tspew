@@ -225,7 +225,9 @@ This is the primary engine for the formatting algorithm"
     (let* ((start (+ start 6))    ;; "[with "
            (end (- end 1))        ;; directly before "]"
            (tparam (progn (goto-char start) (forward-symbol 1) (buffer-substring start (point))))
-           (result (list (cons start 0))))  ;; a single newline after "[with "
+           (result (list (cons start 0)))  ;; a single newline after "[with "
+           (parse-rhs
+            (tspew--parser-alternative #'tspew--parse-sequence #'tspew--parse-type)))
 
       ;; do first X = Y pair
       (forward-char 3)   ;; skip " = "
@@ -233,7 +235,7 @@ This is the primary engine for the formatting algorithm"
             (append result
                     (tspew--format-region
                      (point)
-                     (progn (tspew--parse-type) (point))
+                     (progn (funcall parse-rhs) (point))
                      (+ (length tparam) 3))))
       (while (not (equal (point) end))
         (cl-assert (equal (char-after) ?\;))
@@ -248,7 +250,7 @@ This is the primary engine for the formatting algorithm"
               (append result
                       (tspew--format-region
                        (point)
-                       (progn (tspew--parse-type) (point))
+                       (progn (funcall parse-rhs) (point))
                        (+ (length tparam) 3)))))
       (forward-char)
       result)))  ;; skip trailing right bracket
@@ -646,6 +648,13 @@ The value nil will unfold all levels."
         (skip-syntax-forward "_")
         t)
     nil))
+
+(defun tspew--parse-sequence ()
+  "Parse a curly braced sequence (i.e. of types or integers)"
+  (and (equal (char-after) ?{)
+       (progn
+         (forward-sexp)
+         t)))
 
 ;;
 ;; parser generators (take a param, return a parser)
