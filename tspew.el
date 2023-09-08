@@ -328,10 +328,20 @@ This is the primary engine for the formatting algorithm"
          (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
 
          ;; the param list may be followed by (no whitespace) "::" and a type, also requiring formatting
+         ;; and then optionally another param list, and optionally another type, and...
          (if (looking-at "::")
-             (append
-              (list (cons (point) 0))
-              (tspew--format-region (point) (progn (tspew--parse-type) (point))))
+             (let ((result '()))
+               (while (looking-at "::")
+                 (setq result
+                       (append result
+                               (list (cons (point) 0))
+                               (tspew--format-region (point) (progn (tspew--parse-type) (point)))))
+                 (if (equal (char-after) ?\()
+                     (setq result
+                           (append result
+                                   (list (cons (point) 0))
+                                   (tspew--format-region (point) (progn (funcall (tspew--parser-paren-expr ?\()) (point)))))))
+               result)
            '())
 
          ;; skip trailing space and memfn qual, if present
@@ -753,6 +763,16 @@ To parse zero or more, combine with tspew--parser-optional"
            (while (funcall p))  ;; run until one fails
            t))))                ;; and return true
 
+(defun tspew--parser-alternating (p1 p2)
+  "Create a parser that parses p1 and p2 alternately,
+passing if at least one parser matches:
+p1 [p2 [p1 [p2 [p1 ...]]]]"
+  (lambda ()
+    (and (funcall p1)
+         (progn
+           (while (and (funcall p2) (funcall p1)))
+           t))))
+
 ;;
 ;; parser utilities
 ;;
@@ -846,8 +866,13 @@ To parse zero or more, combine with tspew--parser-optional"
              ;; gcc, and clang sometimes
              (tspew--parser-sequential
               (tspew--parser-paren-expr ?\()
-              (tspew--parser-optional #'tspew--parse-symbol)  ;; ::stuff after the rparen
-
+              ;; we can have child classes with function call operators here,
+              ;; which themselves can have child classes, and so on
+              ;; gcc seems to format them like types but clang puts the arg lists in parens
+              (tspew--parser-optional
+               (tspew--parser-alternating
+                #'tspew--parse-type
+                (tspew--parser-paren-expr ?\()))
 
               (tspew--parser-optional
                (tspew--parser-sequential
