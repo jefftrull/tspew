@@ -514,11 +514,12 @@ When level is nil, all regions are made visible"
   (dolist
       (ov (overlays-in start end))
     (when-let ((depth (overlay-get ov 'tspew-depth)))
-      (if (and level (>= depth level))
+      ;; regions with depth > N are contained within regions of depth N
+      ;; therefore we need only hide those exactly at "level"
+      (if (and level (equal depth level))
           (progn
             (overlay-put ov 'invisible t)
-            (if (equal depth level)
-                (overlay-put ov 'before-string "...")))
+            (overlay-put ov 'before-string "..."))
         (overlay-put ov 'invisible nil)
         (overlay-put ov 'before-string nil)))))
 
