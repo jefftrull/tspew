@@ -475,7 +475,8 @@ This includes operator overloads, lambdas, and anonymous classes"
             ;; process this region
             (tspew--handle-quoted-expr tstart tend)
             ;; mark region with depths within parentheses (or angle brackets)
-            (tspew--mark-depths tstart tend)
+            (with-syntax-table tspew-syntax-table
+              (tspew--mark-depths tstart tend))
             ;; advance past matched text
             (goto-char (+ tend 1))))))))
 
