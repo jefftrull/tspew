@@ -526,18 +526,29 @@ When level is nil, all regions are made visible"
         (overlay-put ov 'invisible nil)
         (overlay-put ov 'before-string nil)))))
 
+(defun tspew--quoted-range-at (pos)
+  "Return the range, including quotes, within which pos is found.
+Returns nil if pos is not within a quoted range."
+  (save-excursion
+    (beginning-of-line)
+    (let ((end (save-excursion (end-of-line) (point)))
+          (rstart nil)
+          (rend nil))
+      (while (re-search-forward tspew-quoted-region-regexp end t)
+        (when (and (>= pos (match-beginning 0)) (< pos (match-end 0)))
+          (setq rstart (match-beginning 0))
+          (setq rend (match-end 0))))
+      (if (and rstart rend) (list rstart rend) nil))))
+
 (defun tspew-fold (&optional level)
   "Fold the quoted region containing point to the requested level.
 Text at the designated level, or deeper, will be replaced with ellipses.
 The value nil will unfold all levels."
   (interactive "P")
   ;; find the quoted region containing point
-  ;; TODO this would be a good place for some user error checking...
-  ;; specifically, to see if we have truly begun inside a quoted region
-  (if-let ((bol (save-excursion (beginning-of-line) (point)))
-           (eol (save-excursion (end-of-line) (point)))
-           (start (save-excursion (and (re-search-backward "\\(\u2018\\|'\\)" bol t) (point))))
-           (end (save-excursion (and (re-search-forward "\\(\u2019\\|'\\)" eol t) (point)))))
+  (if-let* ((range (tspew--quoted-range-at (point)))
+            (start (car range))
+            (end (cadr range)))
       (progn
         (tspew--fold-to-depth start end (and level (prefix-numeric-value level)))
         ;; remove indentation overlays from the region in preparation for reformatting
