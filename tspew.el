@@ -58,6 +58,18 @@ If the compilation window is visible, its width will be used instead")
 (defvar tspew--fill-width nil
   "Max width in columns for current run")
 
+(defvar tspew-quoted-region-regexp
+  ;; in gcc, types and function signatures are enclosed by Unicode left and right single quotes
+  ;; in clang it's ASCII single quotes
+  (let ((quote-start-regexp "\\(\u2018\\|'\\)")
+        (quote-end-regexp "\\(\u2019\\|'\\)")
+        ;; some surprising things can be in type names
+        (char-lit-regexp "\\('[^']'\\)")
+        (allowed-char-regexp "[][[:alnum:]:()<>,&_ =+/*%^.;{}-]"))
+    (concat quote-start-regexp "\\(" char-lit-regexp "\\|" allowed-char-regexp "\\)+" quote-end-regexp))
+  "Regexp for identifying type and function names (typically quoted)
+within an error message")
+
 ;; here I try to implement a two-part pretty-printing system (that is,
 ;; both indentation and "fill") as described in a paper by Rose and Welsh
 ;; (1981), which is paywalled, but there is a nice description of it and
@@ -451,16 +463,7 @@ This includes operator overloads, lambdas, and anonymous classes"
   "Process a single line of error output"
   ;; lstart is a position, lend is a marker
   ;; is this an error message with a type?
-  (let* ((err-regexp (cadr (assoc 'gnu compilation-error-regexp-alist-alist)))
-         ;; types and function signatures are enclosed by Unicode left and right single quotes
-
-         ;; some surprising things can be in type names, because of "operator"
-         (quote-start-regexp "\\(\u2018\\|'\\)")
-         (quote-end-regexp "\\(\u2019\\|'\\)")
-         (char-lit-regexp "\\('[^']'\\)")
-         (allowed-char-regexp "[][[:alnum:]:()<>,&_ =+/*%^.;{}-]")
-         (type-regexp
-          (concat quote-start-regexp "\\(" char-lit-regexp "\\|" allowed-char-regexp "\\)+" quote-end-regexp)))
+  (let* ((err-regexp (cadr (assoc 'gnu compilation-error-regexp-alist-alist))))
     (save-excursion
       (goto-char lstart)
       (if (and (looking-at-p err-regexp)  ;; error line
@@ -469,7 +472,7 @@ This includes operator overloads, lambdas, and anonymous classes"
                ;; the line is too long
                (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width))
         ;; while there is still a match remaining in the line:
-        (while (re-search-forward type-regexp lend t)
+        (while (re-search-forward tspew-quoted-region-regexp lend t)
           (let ((tstart (+ (match-beginning 0) 1))
                 (tend (- (match-end 0) 1)))
             ;; process this region
