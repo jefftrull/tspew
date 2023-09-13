@@ -513,7 +513,7 @@ with their depths, as an overlay property"
 
       ;; create an overlay recording the maximum depth encountered
       (let ((ov (make-overlay start end)))
-        (overlay-put ov 'tspew-max-depth max-depth)
+        (overlay-put ov 'tspew-max-depth (+ max-depth 1))
         (overlay-put ov 'is-tspew t)))))
 
 (defun tspew--fold-to-depth (start end level)
