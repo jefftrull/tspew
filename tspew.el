@@ -496,7 +496,8 @@ This includes operator overloads, lambdas, and anonymous classes"
 with their depths, as an overlay property"
   (save-excursion
     (goto-char start)
-    (let ((pos-stack nil))
+    (let ((pos-stack nil)
+          (max-depth 0))
       (while (not (equal (point) end))
         (cl-case (char-syntax (char-after))
           (?\(
@@ -504,10 +505,16 @@ with their depths, as an overlay property"
           (?\)
            (let ((ov (make-overlay (car pos-stack) (point))))
              (overlay-put ov 'tspew-depth (length pos-stack))
+             (setq max-depth (max (length pos-stack) max-depth))
              (overlay-put ov 'is-tspew t)
              (pop pos-stack)))
           (t nil))
-        (forward-char 1)))))
+        (forward-char 1))
+
+      ;; create an overlay recording the maximum depth encountered
+      (let ((ov (make-overlay start end)))
+        (overlay-put ov 'tspew-max-depth max-depth)
+        (overlay-put ov 'is-tspew t)))))
 
 (defun tspew--fold-to-depth (start end level)
   "Hide text regions with depth >= level.
@@ -523,6 +530,40 @@ When level is nil, all regions are made visible"
             (overlay-put ov 'before-string "..."))
         (overlay-put ov 'invisible nil)
         (overlay-put ov 'before-string nil)))))
+
+(defun tspew-decrease-detail ()
+  "Hide (or \"fold\") the lowest levels of hierarchy in a tspew-formatted region.
+Each time you use this command one additional level is hidden."
+  (interactive)
+
+  (if-let* ((ov (seq-find (lambda (o) (overlay-get o 'tspew-max-depth))
+                          (overlays-in (point) (+ (point) 1))))
+            (max-depth (overlay-get ov 'tspew-max-depth)))
+      (progn
+        (if-let ((depth (overlay-get ov 'tspew-current-depth)))
+            (overlay-put ov 'tspew-current-depth (max (- depth 1) 0))
+          ;; create a tspew-current-depth property from max-depth
+          (overlay-put ov 'tspew-current-depth (max (- (overlay-get ov 'tspew-max-depth) 1) 0)))
+        (message "hiding depth %d and higher" (overlay-get ov 'tspew-current-depth))
+        (tspew-fold (overlay-get ov 'tspew-current-depth)))
+    (error "no formatted region found")))
+
+(defun tspew-increase-detail ()
+  "Expose more of the lower levels of hierarchy in a tspew-formatted region.
+Each time you use this command one additional level is revealed."
+  (interactive)
+
+  (if-let* ((ov (seq-find (lambda (o) (overlay-get o 'tspew-max-depth))
+                          (overlays-in (point) (+ (point) 1))))
+            (max-depth (overlay-get ov 'tspew-max-depth)))
+      (progn
+        (if-let ((depth (overlay-get ov 'tspew-current-depth)))
+            (overlay-put ov 'tspew-current-depth
+                         (min (+ depth 1) (overlay-get ov 'tspew-max-depth)))
+          (overlay-put ov 'tspew-current-depth (overlay-get ov 'tspew-max-depth)))
+        (message "hiding depth %d and higher" (overlay-get ov 'tspew-current-depth))
+        (tspew-fold (overlay-get ov 'tspew-current-depth)))
+    (error "no formatted region found")))
 
 (defun tspew--quoted-range-at (pos)
   "Return the range, including quotes, within which pos is found.
@@ -593,7 +634,9 @@ The value nil will unfold all levels."
         (tspew--fold-to-depth start end (and level (prefix-numeric-value level)))
         ;; remove indentation overlays from the region in preparation for reformatting
         (dolist (ov (overlays-in start end))
-          (when (and (overlay-get ov 'is-tspew) (not (overlay-get ov 'tspew-depth)))
+          (when (and (overlay-get ov 'is-tspew)
+                     (not (overlay-get ov 'tspew-depth))
+                     (not (overlay-get ov 'tspew-max-depth)))
             (delete-overlay ov)))
         ;; and now perform formatting again keeping in mind the folded expressions
         (tspew--handle-quoted-expr (+ start 1) (- end 1)))
