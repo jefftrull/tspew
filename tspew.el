@@ -140,14 +140,11 @@ within an error message")
         (funcall printer
          (cons
           'enter                   ;; beginning of new hierarchy level
-          (-                       ;; supply length
-           ;; (this calculation will be pessimistic by the amount of whitespace)
-           ;; locate the end of the parenthesized expression beginning here
-           (save-excursion
-             (backward-char)       ;; start at open "paren"
-             (forward-sexp)        ;; skip over balanced parens
-             (point))
-           (point)))))
+          (tspew--visible-distance (point)
+                                   (save-excursion
+                                     (backward-char)       ;; start at open "paren"
+                                     (forward-sexp)        ;; skip over balanced parens
+                                     (point))))))
 
        ((equal (char-syntax (string-to-char tok)) ?\))
         (funcall printer 'exit))))))  ;; exit hierarchy level
@@ -196,7 +193,8 @@ within an error message")
            ;; represented as a range in the buffer
            (cl-assert (and (integerp (car cmd)) (integerp (cdr cmd))))
            (setq prev-tok-end (cdr cmd))
-           (setq space-remaining (- space-remaining (- (cdr cmd) (car cmd))))))
+           (setq space-remaining (- space-remaining
+                                    (tspew--visible-distance (car cmd) (cdr cmd))))))
 
         (symbol
          (cl-case cmd
@@ -540,6 +538,48 @@ Returns nil if pos is not within a quoted range."
           (setq rend (match-end 0))))
       (if (and rstart rend) (list rstart rend) nil))))
 
+(defun tspew--visible-distance (start end)
+  "Return the number of visible characters in the buffer between the
+given positions, taking into account overlays with invisible and
+before-string properties"
+  (cl-assert (> end start))
+  ;; thinking about the algorithm
+  ;; we start in an unknown place. If at the start of an overlay with before-string, add its length
+  ;; if in an invisible overlay, note start point
+  ;; go to next overlay transition
+  ;; if now visible (or at end), subtract distance from prev pos/start point and mark us as visible again
+  ;; if we were visible previously, take no action
+
+  (with-restriction start end
+    (save-excursion
+      (goto-char start)
+      (let* (
+             ;; get before-string property, if any, of an invisible overlay that starts here
+             ;; we count only the invisible ones, and only at the start points, to avoid double-counting
+             ;; if it's visible, the before-string is visually before this point
+             ;; if it's not the start point, we've taken it into account already
+             (before-string-at-point
+              (lambda ()
+                (cl-reduce (lambda (x y) (or x y))   ;; reduce with or - but it's a macro so we do this
+                           (mapcar (lambda (ov)
+                                     (and (equal (overlay-start ov) (point))
+                                          (overlay-get ov 'invisible)
+                                          (overlay-get ov 'before-string)))
+                                   (overlays-in (point) (+ (point) 1))))))
+             (before (funcall before-string-at-point))
+             (prev-invisible (get-char-property start 'invisible))
+             (prev-pos start)
+             (distance (if before (+ (- end start) (length before)) (- end start))))
+        (goto-char (next-overlay-change start))
+        (while (< (point) end)
+          (when prev-invisible (setq distance (- distance (- (point) prev-pos))))
+          (setq prev-invisible (get-char-property (point) 'invisible))
+          (setq prev-pos (point))
+          (if-let ((before (funcall before-string-at-point)))
+              (setq distance (+ distance (length before))))
+          (goto-char (next-overlay-change (point))))
+        (if prev-invisible (- distance (- (point) prev-pos)) distance)))))
+
 (defun tspew-fold (&optional level)
   "Fold the quoted region containing point to the requested level.
 Text at the designated level, or deeper, will be replaced with ellipses.
@@ -554,7 +594,9 @@ The value nil will unfold all levels."
         ;; remove indentation overlays from the region in preparation for reformatting
         (dolist (ov (overlays-in start end))
           (when (and (overlay-get ov 'is-tspew) (not (overlay-get ov 'tspew-depth)))
-            (delete-overlay ov))))
+            (delete-overlay ov)))
+        ;; and now perform formatting again keeping in mind the folded expressions
+        (tspew--handle-quoted-expr (+ start 1) (- end 1)))
     (error "Not inside a quoted region")))
 
 
