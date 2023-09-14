@@ -1,7 +1,13 @@
-;; -*- lexical-binding: t; -*-
-;;; tspew.el --- Clean and format "template spew" errors from gcc and Clang
+;;; tspew.el --- Clean and format "template spew" errors from gcc and Clang  -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2023  Jeff Trull
 
 ;; Author: Jeff Trull <edaskel@att.net>
+;; Maintainer: Jeff Trull <edaskel@att.net>
+;; URL: https://github.com/jefftrull/tspew
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "26.1"))
+;; Keywords: c
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -138,13 +144,13 @@ within an error message")
        ((equal (char-syntax (string-to-char tok)) ?\()
         ;; we just entered a parenthesized expression
         (funcall printer
-         (cons
-          'enter                   ;; beginning of new hierarchy level
-          (tspew--visible-distance (point)
-                                   (save-excursion
-                                     (backward-char)       ;; start at open "paren"
-                                     (forward-sexp)        ;; skip over balanced parens
-                                     (point))))))
+                 (cons
+                  'enter                   ;; beginning of new hierarchy level
+                  (tspew--visible-distance (point)
+                                           (save-excursion
+                                             (backward-char)       ;; start at open "paren"
+                                             (forward-sexp)        ;; skip over balanced parens
+                                             (point))))))
 
        ((equal (char-syntax (string-to-char tok)) ?\))
         (funcall printer 'exit))))))  ;; exit hierarchy level
@@ -206,10 +212,10 @@ within an error message")
 
            (intbrk
             (when (equal (caar indentation-stack) 'break)
-                  ;; we have a sequence element and previously decided to split one per line
-                  ;; break and indent to current level (for a new sequence element)
-                  (setq space-remaining (- tspew--fill-width (cdar indentation-stack)))
-                  (push (cons prev-tok-end (cdar indentation-stack)) format-instructions)))))))))
+              ;; we have a sequence element and previously decided to split one per line
+              ;; break and indent to current level (for a new sequence element)
+              (setq space-remaining (- tspew--fill-width (cdar indentation-stack)))
+              (push (cons prev-tok-end (cdar indentation-stack)) format-instructions)))))))))
 
 (defun tspew--format-region (start end &optional initial-indent)
   "Fill and indent region containing text.
@@ -225,7 +231,7 @@ This is the primary engine for the formatting algorithm"
         (tspew--scan printer)))
 
     (funcall printer 'result))
-)
+  )
 
 (defun tspew--format-with-clause (start end)
   "Fill and indent region containing a with clause"
@@ -284,100 +290,100 @@ This is the primary engine for the formatting algorithm"
 
   ;; Detect (via existing parsers) the different chunks of a function
   ;; then dispatch formatters (such as format-region) as appropriate
-   (save-excursion
-     (goto-char start)
+  (save-excursion
+    (goto-char start)
+    (append
+
+     ;; template<class X, class Y...> if present
+     (if (looking-at-p "template<")
+         (let ((result (tspew--format-template-preamble (point) (progn (tspew--parse-template-preamble) (point)))))
+           (skip-syntax-forward " ")
+           result)
+       '())
+
+     ;; constexpr and/or static (both optional)
+     (if (looking-at-p "constexpr ")
+         (progn
+           (forward-word)
+           (skip-syntax-forward " ")
+           '())
+       '())
+
+     (if (looking-at-p "static ")
+         (progn
+           (forward-word)
+           (skip-syntax-forward " ")
+           '())
+       '())
+
+     ;; return type
+     ;; might be absent if function is a constructor
+     ;; you can distinguish it from the function name because it is followed by whitespace, not '('
+     (let ((tstart (point))
+           (tend (progn (tspew--parse-type) (point))))
+       (if (equal (char-after) ?\()      ;; must be constructor name
+           (progn
+             (goto-char tstart)
+             '())
+         (skip-syntax-forward " ")       ;; consume whitespace
+         (append
+          (tspew--format-region tstart tend)
+          (list (cons (point) 0)))))     ;; newline between return type and function name
+
+     ;; even the function name can require formatting
      (append
+      (tspew--format-region (point) (progn (tspew--parse-func-name) (point)))
+      (list (cons (point) 0)))
 
-      ;; template<class X, class Y...> if present
-      (if (looking-at-p "template<")
-          (let ((result (tspew--format-template-preamble (point) (progn (tspew--parse-template-preamble) (point)))))
-            (skip-syntax-forward " ")
-            result)
-        '())
+     ;; at this point we could end with a clang-style function template specialization
+     (if-let ((fun-spl-end (save-excursion (and (funcall (tspew--parser-paren-expr ?<)) (point)))))
+         (tspew--format-region (point) fun-spl-end)
 
-      ;; constexpr and/or static (both optional)
-      (if (looking-at-p "constexpr ")
-          (progn
-            (forward-word)
-            (skip-syntax-forward " ")
-            '())
-        '())
+       ;; otherwise it's the gcc possibilities: parameters, member function qualifiers, with clause
+       (append
+        (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
 
-      (if (looking-at-p "static ")
-          (progn
-            (forward-word)
-            (skip-syntax-forward " ")
-            '())
-        '())
+        ;; the param list may be followed by (no whitespace) "::" and a type, also requiring formatting
+        ;; and then optionally another param list, and optionally another type, and...
+        (if (looking-at "::")
+            (let ((result '()))
+              (while (looking-at "::")
+                (setq result
+                      (append result
+                              (list (cons (point) 0))
+                              (tspew--format-region (point) (progn (tspew--parse-type) (point)))))
+                (if (equal (char-after) ?\()
+                    (setq result
+                          (append result
+                                  (list (cons (point) 0))
+                                  (tspew--format-region (point) (progn (funcall (tspew--parser-paren-expr ?\()) (point)))))))
+              result)
+          '())
 
-      ;; return type
-      ;; might be absent if function is a constructor
-      ;; you can distinguish it from the function name because it is followed by whitespace, not '('
-      (let ((tstart (point))
-            (tend (progn (tspew--parse-type) (point))))
-        (if (equal (char-after) ?\()      ;; must be constructor name
+        ;; skip trailing space and memfn qual, if present
+        (if (< (point) end)
             (progn
-              (goto-char tstart)
+              (skip-syntax-forward " ")
+              (funcall (tspew--parser-memfn-qual))
               '())
-          (skip-syntax-forward " ")       ;; consume whitespace
-          (append
-           (tspew--format-region tstart tend)
-           (list (cons (point) 0)))))     ;; newline between return type and function name
+          '())
 
-      ;; even the function name can require formatting
-      (append
-       (tspew--format-region (point) (progn (tspew--parse-func-name) (point)))
-       (list (cons (point) 0)))
+        (if (< (point) end)
+            (let ((wc-start (progn (skip-syntax-forward " ") (point))))
+              (if (tspew--parse-with-clause)
+                  (append
+                   ;; newline before with clause, if present
+                   (list (cons wc-start 0))
+                   (tspew--format-with-clause wc-start (point)))
+                '()))
+          '()))))))
 
-      ;; at this point we could end with a clang-style function template specialization
-      (if-let ((fun-spl-end (save-excursion (and (funcall (tspew--parser-paren-expr ?<)) (point)))))
-          (tspew--format-region (point) fun-spl-end)
-
-        ;; otherwise it's the gcc possibilities: parameters, member function qualifiers, with clause
-        (append
-         (tspew--format-region (point) (progn  (tspew--parse-param-list) (point)))
-
-         ;; the param list may be followed by (no whitespace) "::" and a type, also requiring formatting
-         ;; and then optionally another param list, and optionally another type, and...
-         (if (looking-at "::")
-             (let ((result '()))
-               (while (looking-at "::")
-                 (setq result
-                       (append result
-                               (list (cons (point) 0))
-                               (tspew--format-region (point) (progn (tspew--parse-type) (point)))))
-                 (if (equal (char-after) ?\()
-                     (setq result
-                           (append result
-                                   (list (cons (point) 0))
-                                   (tspew--format-region (point) (progn (funcall (tspew--parser-paren-expr ?\()) (point)))))))
-               result)
-           '())
-
-         ;; skip trailing space and memfn qual, if present
-         (if (< (point) end)
-             (progn
-               (skip-syntax-forward " ")
-               (funcall (tspew--parser-memfn-qual))
-               '())
-           '())
-
-         (if (< (point) end)
-             (let ((wc-start (progn (skip-syntax-forward " ") (point))))
-               (if (tspew--parse-with-clause)
-                   (append
-                    ;; newline before with clause, if present
-                    (list (cons wc-start 0))
-                    (tspew--format-with-clause wc-start (point)))
-                 '()))
-           '()))))))
-
-  ;; newlines in between these:
-  ;; 1) output static if present
-  ;; 2) format return type
-  ;; 3) if func-name has template args, format individually
-  ;;    otherwise, format it as a unit with the param list
-  ;; 4) if with-clause present, format it
+;; newlines in between these:
+;; 1) output static if present
+;; 2) format return type
+;; 3) if func-name has template args, format individually
+;;    otherwise, format it as a unit with the param list
+;; 4) if with-clause present, format it
 
 (defun tspew--format-quoted-expr (tstart tend)
   "Split up and indent a quoted region within an error message as necessary to meet line width requirements"
@@ -439,23 +445,23 @@ This includes operator overloads, lambdas, and anonymous classes"
 ;; contents can be functions, function specializations, maybe other things?
 (defun tspew--handle-quoted-expr (tstart tend)
   "Fill and indent a single quoted expression (type or function) within an error message"
-    ;; create an overlay covering the expression
+  ;; create an overlay covering the expression
   (let ((ov (make-overlay tstart tend))
         (instructions (tspew--format-quoted-expr tstart tend)))
 
     (when (equal 0 (length instructions))
       (message "no instructions produced for region |%s|" (buffer-substring tstart tend)))
     (dolist (instr instructions)
-            (let* ((istart (car instr))
-                   (indentation (cdr instr))
-                   (ov (make-overlay istart istart)))
-              ;; display indented and filled types in place of the original
-              (overlay-put ov 'before-string (concat "\n" (make-string indentation ?\s)))
-              ;; remember overlay
-              ;; [JET] I initially kept a list of overlays and used that, but compilation-mode
-              ;; calls kill-all-local-variables, which deletes the buffer-local value
-              ;; of my list. So instead, we use properties:
-              (overlay-put ov 'is-tspew t)))))
+      (let* ((istart (car instr))
+             (indentation (cdr instr))
+             (ov (make-overlay istart istart)))
+        ;; display indented and filled types in place of the original
+        (overlay-put ov 'before-string (concat "\n" (make-string indentation ?\s)))
+        ;; remember overlay
+        ;; [JET] I initially kept a list of overlays and used that, but compilation-mode
+        ;; calls kill-all-local-variables, which deletes the buffer-local value
+        ;; of my list. So instead, we use properties:
+        (overlay-put ov 'is-tspew t)))))
 
 (defun tspew--handle-line (lstart lend)
   "Process a single line of error output"
@@ -469,17 +475,17 @@ This includes operator overloads, lambdas, and anonymous classes"
                (not (save-excursion (re-search-forward "static_assert\\|static assertion" lend t)))
                ;; the line is too long
                (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width))
-        ;; while there is still a match remaining in the line:
-        (while (re-search-forward tspew-quoted-region-regexp lend t)
-          (let ((tstart (+ (match-beginning 0) 1))
-                (tend (- (match-end 0) 1)))
-            ;; process this region
-            (tspew--handle-quoted-expr tstart tend)
-            ;; mark region with depths within parentheses (or angle brackets)
-            (with-syntax-table tspew-syntax-table
-              (tspew--mark-depths tstart tend))
-            ;; advance past matched text
-            (goto-char (+ tend 1))))))))
+          ;; while there is still a match remaining in the line:
+          (while (re-search-forward tspew-quoted-region-regexp lend t)
+            (let ((tstart (+ (match-beginning 0) 1))
+                  (tend (- (match-end 0) 1)))
+              ;; process this region
+              (tspew--handle-quoted-expr tstart tend)
+              ;; mark region with depths within parentheses (or angle brackets)
+              (with-syntax-table tspew-syntax-table
+                (tspew--mark-depths tstart tend))
+              ;; advance past matched text
+              (goto-char (+ tend 1))))))))
 
 ;; remember where we are in the buffer
 ;; the compilation filter may give us partial lines, so we have to keep track of how far
@@ -687,7 +693,7 @@ The value nil will unfold all levels."
         ;; process a single line
         (tspew--handle-line tspew--parse-start line-end-marker)
         (setq-local tspew--parse-start (marker-position line-end-marker)))))
-)
+  )
 
 ;; TSpew is a minor mode for compilation buffers, not source code
 ;; To use it you need to enable it after a compilation buffer is created,
@@ -713,9 +719,6 @@ The value nil will unfold all levels."
     (tspew--remove-overlays)
     (kill-local-variable 'tspew--parse-start)))
 
-;; BOZO should this be tspew-mode?
-(provide 'tspew)
-
 ;; NEW (as of 8/4/2023) plan:
 ;; Don't bother with start points
 ;; We have functions for each production in the grammar that return an endpoint (found!) or nil.
@@ -737,17 +740,17 @@ The value nil will unfold all levels."
     ;; skip forward past word and symbol constituents
     ;; forward-symbol skips initial whitespace also, which I don't want
     (or (> (skip-syntax-forward "w_") 0)
-         (progn
-           (goto-char start)
-           nil))))
+        (progn
+          (goto-char start)
+          nil))))
 
 (defun tspew--parse-cv ()
   "Parse the const or volatile keywords"
   (and (or (looking-at-p "const\\s ") (looking-at "volatile\\s "))
-      (progn
-        (skip-syntax-forward "w")
-        (skip-syntax-forward " ")
-        t)))
+       (progn
+         (skip-syntax-forward "w")
+         (skip-syntax-forward " ")
+         t)))
 
 ;; mandatory whitespace
 (defun tspew--parse-whitespace ()
@@ -761,25 +764,25 @@ The value nil will unfold all levels."
 (defun tspew--parse-template-preamble ()
   "Parse the initial template<class X, class Y...> in function template specializations"
   (and (looking-at-p "template<")
-      (progn
-        (forward-word 1)
-        (forward-sexp 1)
-        (skip-syntax-forward " ")
-        t)))
+       (progn
+         (forward-word 1)
+         (forward-sexp 1)
+         (skip-syntax-forward " ")
+         t)))
 
 (defun tspew--parse-with-clause ()
   "Parse a type elaboration for function template instantiations of the form \"[with X = Y; Q = R; ...]\""
   (and (looking-at-p "\\[with ")
-      (progn
-        (forward-sexp)
-        t)))
+       (progn
+         (forward-sexp)
+         t)))
 
 (defun tspew--parse-ref-modifier ()
   "Parse a pointer, ref, or rvalue ref"
   (and (looking-at-p "\\*\\|&\\|&&")
-      (progn
-        (skip-syntax-forward "_")
-        t)))
+       (progn
+         (skip-syntax-forward "_")
+         t)))
 
 (defun tspew--parse-sequence ()
   "Parse a curly braced sequence (i.e. of types or integers)"
@@ -811,10 +814,10 @@ The value nil will unfold all levels."
 It requires - and consumes - trailing whitespace"
   (lambda ()
     (and (looking-at-p (concat kwd "\\s "))   ;; trailing whitespace required
-        (progn
-          (forward-char (length kwd))
-          (skip-syntax-forward " ")
-          t))))
+         (progn
+           (forward-char (length kwd))
+           (skip-syntax-forward " ")
+           t))))
 
 (defun tspew--parser-memfn-qual ()
   "Parse a member function qualifier, consuming trailing whitespace"
@@ -838,22 +841,22 @@ It requires - and consumes - trailing whitespace"
 (defmacro tspew--parser-alternative (&rest parsers)
   "Create a parser that attempts to parse one of several input parsers, failing if all fail"
   `(lambda ()
-    (let ((start (point)))
-      ;; this whole thing is a macro because of this - "or" is not a function, so we cannot "apply" it.
-      ;; instead we build the expression through a macro
-      (if (or ,@(mapcar (lambda (p) (list 'funcall p)) parsers))
-          t
-        (goto-char start)
-        nil))))
+     (let ((start (point)))
+       ;; this whole thing is a macro because of this - "or" is not a function, so we cannot "apply" it.
+       ;; instead we build the expression through a macro
+       (if (or ,@(mapcar (lambda (p) (list 'funcall p)) parsers))
+           t
+         (goto-char start)
+         nil))))
 
 (defmacro tspew--parser-sequential (&rest parsers)
   "Create a parser that attempts to parse a series of input parsers in sequence, failing if any fail"
   `(lambda ()
-    (let ((start (point)))
-      (if (and ,@(mapcar (lambda (p) (list 'funcall p)) parsers))
-          t
-        (goto-char start)
-        nil))))
+     (let ((start (point)))
+       (if (and ,@(mapcar (lambda (p) (list 'funcall p)) parsers))
+           t
+         (goto-char start)
+         nil))))
 
 (defun tspew--parser-multiple (p)
   "Create a parser that parses one or more of the input parser, greedily.
@@ -988,4 +991,9 @@ p1 [p2 [p1 [p2 [p1 ...]]]]"
              ;; ::fname(T, U...) [with T = X, U = Y...] in gcc
              (tspew--parser-paren-expr ?<)
 
-))))
+             ))))
+
+;; BOZO should this be tspew-mode?
+(provide 'tspew)
+;;; tspew.el ends here
+
