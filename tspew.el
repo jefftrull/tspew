@@ -704,6 +704,7 @@ The value nil will unfold all levels."
 ;; will enable tspew for all compiles. You may prefer to restrict it to
 ;; certain projects instead by writing your own hook.
 
+;;;###autoload
 (define-minor-mode tspew-mode
   "Toggle tspew (Template Spew) mode"
   :init-value nil
