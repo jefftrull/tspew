@@ -1,5 +1,4 @@
-;; -*- lexical-binding: t; -*-
-;;; tspew.el --- Clean and format "template spew" errors from gcc and Clang
+;;; tspew.el --- Clean and format "template spew" errors from gcc and Clang  -*- lexical-binding: t; -*-
 
 ;; Author: Jeff Trull <edaskel@att.net>
 
@@ -721,8 +720,6 @@ The value nil will unfold all levels."
     (tspew--remove-overlays)
     (kill-local-variable 'tspew--parse-start)))
 
-;; BOZO should this be tspew-mode?
-(provide 'tspew)
 
 ;; NEW (as of 8/4/2023) plan:
 ;; Don't bother with start points
@@ -997,3 +994,7 @@ p1 [p2 [p1 [p2 [p1 ...]]]]"
              (tspew--parser-paren-expr ?<)
 
              ))))
+
+;; BOZO should this be tspew-mode?
+(provide 'tspew)
+;;; tspew.el ends here
