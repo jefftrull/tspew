@@ -643,6 +643,15 @@ The value nil will unfold all levels."
     (error "Not inside a quoted region")))
 
 
+;; define key shortcuts for expand/contract of formatted expressions
+(defvar-keymap tspew-mode-map
+  :doc "Keymap for the tspew compilation minor mode"
+  "C-c +" #'tspew-increase-detail
+  "C-c -" #'tspew-decrease-detail
+  )
+
+(add-to-list 'minor-mode-map-alist `(tspew-mode . ,tspew-mode-map))
+
 (defun tspew--remove-overlays ()
   (let ((overlays (seq-filter (lambda (ov) (overlay-get ov 'is-tspew))
                               (overlays-in (point-min) (point-max)))))
