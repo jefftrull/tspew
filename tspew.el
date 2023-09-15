@@ -541,7 +541,7 @@ Each time you use this command one additional level is hidden."
             (max-depth (overlay-get ov 'tspew-max-depth)))
       (progn
         (if-let ((depth (overlay-get ov 'tspew-current-depth)))
-            (overlay-put ov 'tspew-current-depth (max (- depth 1) 0))
+            (overlay-put ov 'tspew-current-depth (max (- depth 1) 1))
           ;; create a tspew-current-depth property from max-depth
           (overlay-put ov 'tspew-current-depth (max (- (overlay-get ov 'tspew-max-depth) 1) 0)))
         (message "hiding depth %d and higher" (overlay-get ov 'tspew-current-depth))
