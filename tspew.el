@@ -439,8 +439,7 @@ This includes operator overloads, lambdas, and anonymous classes"
 (defun tspew--handle-quoted-expr (tstart tend)
   "Fill and indent a single quoted expression (type or function) within an error message"
   ;; create an overlay covering the expression
-  (let ((ov (make-overlay tstart tend))
-        (instructions (tspew--format-quoted-expr tstart tend)))
+  (let ((instructions (tspew--format-quoted-expr tstart tend)))
 
     (when (equal 0 (length instructions))
       (message "no instructions produced for region |%s|" (buffer-substring tstart tend)))
