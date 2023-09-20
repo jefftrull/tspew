@@ -379,7 +379,8 @@ This is the primary engine for the formatting algorithm"
 ;; 4) if with-clause present, format it
 
 (defun tspew--format-quoted-expr (tstart tend)
-  "Split up and indent a quoted region within an error message as necessary to meet line width requirements"
+  "Split up and indent a quoted region within an error message as necessary
+to meet line width requirements"
   ;; At the moment we handle types or function names (as in "required from" lines)
   ;; We check to see which one we have. Types are simple. For functions, we break them up into chunks
   ;; separated by whitespace, like "return type" "function parameter list" or "with clause"
@@ -437,7 +438,8 @@ This includes operator overloads, lambdas, and anonymous classes"
 
 ;; contents can be functions, function specializations, maybe other things?
 (defun tspew--handle-quoted-expr (tstart tend)
-  "Fill and indent a single quoted expression (type or function) within an error message"
+  "Fill and indent a single quoted expression (type or function)
+within an error message"
   ;; create an overlay covering the expression
   (let ((instructions (tspew--format-quoted-expr tstart tend)))
 
@@ -764,7 +766,8 @@ The value nil will unfold all levels."
           nil))))
 
 (defun tspew--parse-template-preamble ()
-  "Parse the initial template<class X, class Y...> in function template specializations"
+  "Parse the initial template<class X, class Y...>
+in function template specializations"
   (and (looking-at-p "template<")
        (progn
          (forward-word 1)
@@ -773,7 +776,8 @@ The value nil will unfold all levels."
          t)))
 
 (defun tspew--parse-with-clause ()
-  "Parse a type elaboration for function template instantiations of the form \"[with X = Y; Q = R; ...]\""
+  "Parse a type elaboration for function template instantiations
+of the form \"[with X = Y; Q = R; ...]\""
   (and (looking-at-p "\\[with ")
        (progn
          (forward-sexp)
@@ -803,7 +807,8 @@ The value nil will unfold all levels."
 
 ;; parenthesized expression using the given start character
 (defun tspew--parser-paren-expr (parenc)
-  "Parse a balanced parenthesis expression starting with the given opening character"
+  "Parse a balanced parenthesis expression starting with
+the given opening character"
   (lambda ()
     (and (equal (char-after) parenc)
          (progn
@@ -841,7 +846,8 @@ It requires - and consumes - trailing whitespace"
   (lambda () (or (funcall p) t)))
 
 (defmacro tspew--parser-alternative (&rest parsers)
-  "Create a parser that attempts to parse one of several input parsers, failing if all fail"
+  "Create a parser that attempts to parse one of several input parsers,
+passing if any do"
   `(lambda ()
      (let ((start (point)))
        ;; this whole thing is a macro because of this - "or" is not a function, so we cannot "apply" it.
@@ -852,7 +858,8 @@ It requires - and consumes - trailing whitespace"
          nil))))
 
 (defmacro tspew--parser-sequential (&rest parsers)
-  "Create a parser that attempts to parse a series of input parsers in sequence, failing if any fail"
+  "Create a parser that attempts to parse a series of input parsers in sequence,
+passing if all do"
   `(lambda ()
      (let ((start (point)))
        (if (and ,@(mapcar (lambda (p) (list 'funcall p)) parsers))
@@ -886,17 +893,20 @@ p1 [p2 [p1 [p2 [p1 ...]]]]"
 ;; composed, higher-level parsers
 
 (defun tspew--parse-func-name ()
-  "Parse a function name (the bit between the return type and the open paren of the arguments)"
+  "Parse a function name (the bit between the return type
+and the open paren of the arguments)"
   ;; for the moment, assume we can use a "type" which is similar, possibly identical
   (tspew--parse-type))
 
 (defun tspew--parse-param-list ()
-  "Parse a comma-separated function parameter list as seen in compiler error messages"
+  "Parse a comma-separated function parameter list as seen
+in compiler error messages"
   (forward-sexp)
   )
 
 (defun tspew--parser-builtin-int-type ()
-  "Parse a builtin C++ integral type (int/char with modifiers), with following whitespace"
+  "Parse a builtin C++ integral type (int/char with modifiers),
+with trailing whitespace"
   (tspew--parser-alternative
    (tspew--parser-sequential
     (tspew--parser-optional (tspew--parser-keyword "unsigned"))
