@@ -658,7 +658,7 @@ The value nil will unfold all levels."
       (delete-overlay ov)))
   )
 
-(defun tspew--parse-initialize (proc)
+(defun tspew--parse-initialize (_proc)
   "Reset compilation output processing"
 
   (let ((win (get-buffer-window)))
