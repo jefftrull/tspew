@@ -82,8 +82,6 @@ within an error message")
   "C-c -" #'tspew-decrease-detail
   )
 
-(add-to-list 'minor-mode-map-alist `(tspew-mode . ,tspew-mode-map))
-
 (defun tspew--remove-overlays ()
   (let ((overlays (seq-filter (lambda (ov) (overlay-get ov 'is-tspew))
                               (overlays-in (point-min) (point-max)))))
@@ -110,8 +108,8 @@ within an error message")
   ;; updating tspew--parse-start past the last newline we got.
   ;; Be sure to use "markers" when necessary, as positions are strictly
   ;; buffer offsets and are not "stable" in the iterator sense
-  (if (not tspew--parse-start)
-      (setq-local tspew--parse-start compilation-filter-start))
+  (unless tspew--parse-start
+    (setq-local tspew--parse-start compilation-filter-start))
 
   ;; ensure things like "operator()" are considered a single symbol,
   ;; not a symbol followed by parens. The same is true of anonymous classes
@@ -138,6 +136,7 @@ within an error message")
 ;; will enable tspew for all compiles. You may prefer to restrict it to
 ;; certain projects instead by writing your own hook.
 
+;;;###autoload
 (define-minor-mode tspew-mode
   "Toggle tspew (Template Spew) mode"
   :init-value nil
@@ -153,6 +152,7 @@ within an error message")
     (tspew--remove-overlays)
     (kill-local-variable 'tspew--parse-start)))
 
+(add-to-list 'minor-mode-map-alist `(tspew-mode . ,tspew-mode-map))
 
 ;; NEW (as of 8/4/2023) plan:
 ;; Don't bother with start points
@@ -167,9 +167,7 @@ within an error message")
 ;; A lightweight parser formalism
 ;; A Parser returns t and updates point if successful and returns nil otherwise
 
-;;
-;; parser combinators
-;;
+;;; parser combinators
 
 ;; some combinators for use in defining higher-level structures
 ;; these accept parsers and make new parsers from them
@@ -225,7 +223,7 @@ p1 [p2 [p1 [p2 [p1 ...]]]]"
   "Recursive function implementation of tspew--parser-grammar.
 You can call this to see the exact form produced by the grammar, pre-expansion"
   (if (not grammar)
-      '(lambda () t)     ;; pass and consume no input
+      (lambda () t)     ;; pass and consume no input
     (cond
      ((stringp grammar)
       `(tspew--parser-keyword ,grammar))    ;; interpret as keyword
@@ -239,7 +237,7 @@ You can call this to see the exact form produced by the grammar, pre-expansion"
         (- (cl-assert (equal (length grammar) 2))
            `(tspew--parser-optional ,(tspew--parser-grammar-expand (cadr grammar))))
         (| `(tspew--parser-alternative
-             ,@(mapcar (lambda (p) (tspew--parser-grammar-expand p)) (cdr grammar))))
+             ,@(mapcar #'tspew--parser-grammar-expand (cdr grammar))))
         (+ (cl-assert (equal (length grammar) 2))
            `(tspew--parser-multiple ,(tspew--parser-grammar-expand (cadr grammar))))
         (* (cl-assert (equal (length grammar) 2))
@@ -249,7 +247,7 @@ You can call this to see the exact form produced by the grammar, pre-expansion"
             `(tspew--parser-alternating ,(tspew--parser-grammar-expand (cadr grammar))
                                         ,(tspew--parser-grammar-expand (caddr grammar))))
         (t ;; it's a list, so it's the default - a sequential parser
-         `(tspew--parser-sequential ,@(mapcar (lambda (p) (tspew--parser-grammar-expand p)) grammar)))))
+         `(tspew--parser-sequential ,@(mapcar #'tspew--parser-grammar-expand grammar)))))
 )))
 
 ;; then the user interface
@@ -265,7 +263,7 @@ Without one of those initial symbols, the inputs are considered to be
 a sequential parser."
   (tspew--parser-grammar-expand grammar))
 
-;; low-level (leaf) parsers
+;;; low-level (leaf) parsers
 
 (defun tspew--parse-symbol ()
   "Parse a symbol (a string of characters with word or \"symbol constituent\" syntax)"
@@ -326,9 +324,7 @@ of the form \"[with X = Y; Q = R; ...]\""
          (forward-sexp)
          t)))
 
-;;
-;; parser generators (take a param, return a parser)
-;;
+;;; parser generators (take a param, return a parser)
 
 ;; here we will use "parser" in the name to indicate that result is a parser,
 ;; so you have to funcall to use it. You can also use the result in a parser
@@ -363,9 +359,7 @@ It requires - and consumes - trailing whitespace"
    (tspew--parser-keyword "&&")
    (tspew--parser-keyword "&")))
 
-;;
-;; parser utilities
-;;
+;;; parser utilities
 
 ;; composed, higher-level parsers
 
@@ -420,7 +414,7 @@ with trailing whitespace"
   ;; func := [ constexpr ] [ static ] type func-name param-list [memfn-qual] [ with-clause ]
   (funcall (tspew--parser-grammar
             ( (- #'tspew--parse-template-preamble)
-              ;; BOZO actually not sure which of these keywords will appear first
+              ;; REVIEW actually not sure which of these keywords will appear first
               (- "constexpr")
               (- "static")
               ;; return type is optional because it could be a constructor
@@ -439,6 +433,8 @@ with trailing whitespace"
                ;; ::fname<T, U...> vs
                ;; ::fname(T, U...) [with T = X, U = Y...] in gcc
                (tspew--parser-paren-expr ?<))))))
+
+;;; The indent/fill algorithm
 
 ;; here I try to implement a two-part pretty-printing system (that is,
 ;; both indentation and "fill") as described in a paper by Rose and Welsh
@@ -480,7 +476,7 @@ with trailing whitespace"
                  (when (not (equal (char-syntax (char-after)) ?\)))
                    ;; NOT another close paren. supply whitespace as next token.
                    (skip-syntax-backward " ")))
-               (cons start (+ start 1)))
+               (cons start (1+ start)))
               (?\s
                ;; whitespace not following punctuation or closing paren
                ;; preserve for readability
@@ -581,6 +577,8 @@ with trailing whitespace"
               (setq space-remaining (- tspew--fill-width (cdar indentation-stack)))
               (push (cons prev-tok-end (cdar indentation-stack)) format-instructions)))))))))
 
+;;; Code that drives reformatting
+
 (defun tspew--format-region (start end &optional initial-indent)
   "Fill and indent region containing text.
 This is the primary engine for the formatting algorithm"
@@ -602,7 +600,7 @@ This is the primary engine for the formatting algorithm"
   ;; the semicolon-separated list inside the with clause looks OK when formatted using the type code
   (save-excursion
     (let* ((start (+ start 6))    ;; "[with "
-           (end (- end 1))        ;; directly before "]"
+           (end (1- end))         ;; directly before "]"
            (result (list (cons start 0)))  ;; a single newline after "[with "
            (parse-rhs
             (tspew--parser-alternative #'tspew--parse-sequence #'tspew--parse-type))
@@ -628,7 +626,7 @@ This is the primary engine for the formatting algorithm"
       (while (not (equal (point) end))
         (cl-assert (equal (char-after) ?\;))
         (forward-char)
-        (push (cons (+ (point) 1) 0) result)     ;; a newline after every "; "
+        (push (cons (1+ (point)) 0) result)     ;; a newline after every "; "
 
         (skip-syntax-forward " ")
         (setq tparam
@@ -716,7 +714,7 @@ This is the primary engine for the formatting algorithm"
                       (append result
                               (list (cons (point) 0))
                               (tspew--format-region (point) (progn (tspew--parse-type) (point)))))
-                (if (equal (char-after) ?\()
+                (when (equal (char-after) ?\()
                     (setq result
                           (append result
                                   (list (cons (point) 0))
@@ -842,19 +840,17 @@ within an error message"
                (>= (- (line-end-position) (line-beginning-position)) tspew--fill-width))
           ;; while there is still a match remaining in the line:
           (while (re-search-forward tspew-quoted-region-regexp lend t)
-            (let ((tstart (+ (match-beginning 0) 1))
-                  (tend (- (match-end 0) 1)))
+            (let ((tstart (1+ (match-beginning 0)))
+                  (tend (1- (match-end 0))))
               ;; process this region
               (tspew--handle-quoted-expr tstart tend)
               ;; mark region with depths within parentheses (or angle brackets)
               (with-syntax-table tspew-syntax-table
                 (tspew--mark-depths tstart tend))
               ;; advance past matched text
-              (goto-char (+ tend 1))))))))
+              (goto-char (1+ tend))))))))
 
-;;
-;; depth-based folding support
-;;
+;;; Depth-based folding support
 
 (defun tspew--mark-depths (start end)
   "Mark regions of text inside parentheses/angle brackets
@@ -866,7 +862,7 @@ with their depths, as an overlay property"
       (while (not (equal (point) end))
         (cl-case (char-syntax (char-after))
           (?\(
-           (push (+ (point) 1) pos-stack))
+           (push (1+ (point)) pos-stack))
           (?\)
            (let ((ov (make-overlay (car pos-stack) (point))))
              (overlay-put ov 'tspew-depth (length pos-stack))
@@ -878,7 +874,7 @@ with their depths, as an overlay property"
 
       ;; create an overlay recording the maximum depth encountered
       (let ((ov (make-overlay start end)))
-        (overlay-put ov 'tspew-max-depth (+ max-depth 1))
+        (overlay-put ov 'tspew-max-depth (1+ max-depth))
         (overlay-put ov 'is-tspew t)))))
 
 (defun tspew--fold-to-depth (start end level)
@@ -902,7 +898,7 @@ Each time you use this command one additional level is hidden."
   (interactive)
 
   (if-let* ((ov (seq-find (lambda (o) (overlay-get o 'tspew-max-depth))
-                          (overlays-in (point) (+ (point) 1))))
+                          (overlays-in (point) (1+ (point)))))
             (max-depth (overlay-get ov 'tspew-max-depth)))
       (progn
         (if-let ((depth (overlay-get ov 'tspew-current-depth)))
@@ -919,12 +915,12 @@ Each time you use this command one additional level is revealed."
   (interactive)
 
   (if-let* ((ov (seq-find (lambda (o) (overlay-get o 'tspew-max-depth))
-                          (overlays-in (point) (+ (point) 1))))
+                          (overlays-in (point) (1+ (point)))))
             (max-depth (overlay-get ov 'tspew-max-depth)))
       (progn
         (if-let ((depth (overlay-get ov 'tspew-current-depth)))
             (overlay-put ov 'tspew-current-depth
-                         (min (+ depth 1) (overlay-get ov 'tspew-max-depth)))
+                         (min (1+ depth) (overlay-get ov 'tspew-max-depth)))
           (overlay-put ov 'tspew-current-depth (overlay-get ov 'tspew-max-depth)))
         (message "hiding depth %d and higher" (overlay-get ov 'tspew-current-depth))
         (tspew-fold (overlay-get ov 'tspew-current-depth)))
@@ -971,7 +967,7 @@ before-string properties"
                                      (and (equal (overlay-start ov) (point))
                                           (overlay-get ov 'invisible)
                                           (overlay-get ov 'before-string)))
-                                   (overlays-in (point) (+ (point) 1)))
+                                   (overlays-in (point) (1+ (point))))
                            :initial-value nil)))
              (before (funcall before-string-at-point))
              (prev-invisible (get-char-property start 'invisible))
@@ -1005,9 +1001,9 @@ The value nil will unfold all levels."
                      (not (overlay-get ov 'tspew-max-depth)))
             (delete-overlay ov)))
         ;; and now perform formatting again keeping in mind the folded expressions
-        (tspew--handle-quoted-expr (+ start 1) (- end 1)))
+        (tspew--handle-quoted-expr (1+ start) (1- end)))
     (error "Not inside a quoted region")))
 
-;; BOZO should this be tspew-mode?
+;; REVIEW should this be tspew-mode?
 (provide 'tspew)
 ;;; tspew.el ends here
