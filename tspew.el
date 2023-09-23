@@ -219,6 +219,52 @@ p1 [p2 [p1 [p2 [p1 ...]]]]"
            (while (and (funcall p2) (funcall p1)))
            t))))
 
+;; syntactic sugar for combinators - a grammar constructor
+;; implementation first
+(defun tspew--parser-grammar-expand (grammar)
+  "Recursive function implementation of tspew--parser-grammar.
+You can call this to see the exact form produced by the grammar, pre-expansion"
+  (if (not grammar)
+      '(lambda () t)     ;; pass and consume no input
+    (cond
+     ((stringp grammar)
+      `(tspew--parser-keyword ,grammar))    ;; interpret as keyword
+     ((not (listp grammar))
+      grammar)                              ;; unknown, just pass through (future extension?)
+     ((or (equal (car grammar) 'function)   ;; the name of a function (parser, most likely)
+          (and (symbolp (car grammar))      ;; a parser generator
+               (string-prefix-p "tspew--parser-" (symbol-name (car grammar)))))
+          grammar)                          ;; existing parser - just pass it through
+     (t (cl-case (car grammar)
+        (- (cl-assert (equal (length grammar) 2))
+           `(tspew--parser-optional ,(tspew--parser-grammar-expand (cadr grammar))))
+        (| `(tspew--parser-alternative
+             ,@(mapcar (lambda (p) (tspew--parser-grammar-expand p)) (cdr grammar))))
+        (+ (cl-assert (equal (length grammar) 2))
+           `(tspew--parser-multiple ,(tspew--parser-grammar-expand (cadr grammar))))
+        (* (cl-assert (equal (length grammar) 2))
+           `(tspew--parser-optional
+             (tspew--parser-multiple ,(tspew--parser-grammar-expand (cadr grammar)))))
+        (<> (cl-assert (equal (length grammar) 3))
+            `(tspew--parser-alternating ,(tspew--parser-grammar-expand (cadr grammar))
+                                        ,(tspew--parser-grammar-expand (caddr grammar))))
+        (t ;; it's a list, so it's the default - a sequential parser
+         `(tspew--parser-sequential ,@(mapcar (lambda (p) (tspew--parser-grammar-expand p)) grammar)))))
+)))
+
+;; then the user interface
+(defmacro tspew--parser-grammar (grammar)
+  "Create a parser from combinators using shorthand.
+An sexp that starts with:
+- becomes optional
+| becomes alternative
++ becomes multiple (at least one)
+* becomes optional multiple (zero or more)
+<> becomes alternating (at least the first, then second first second...)
+Without one of those initial symbols, the inputs are considered to be
+a sequential parser."
+  (tspew--parser-grammar-expand grammar))
+
 ;; low-level (leaf) parsers
 
 (defun tspew--parse-symbol ()
@@ -338,18 +384,9 @@ in compiler error messages"
 (defun tspew--parser-builtin-int-type ()
   "Parse a builtin C++ integral type (int/char with modifiers),
 with trailing whitespace"
-  (tspew--parser-alternative
-   (tspew--parser-sequential
-    (tspew--parser-optional (tspew--parser-keyword "unsigned"))
-    (tspew--parser-keyword "char"))
-   (tspew--parser-sequential
-    (tspew--parser-optional
-     (tspew--parser-multiple
-      (tspew--parser-alternative
-       (tspew--parser-keyword "long")
-       (tspew--parser-keyword "short")
-       (tspew--parser-keyword "unsigned"))))
-    (tspew--parser-keyword "int"))))
+  (tspew--parser-grammar
+   (| ( (- "unsigned") "char")
+      ( (* (| "long" "short" "unsigned")) "int"))))
 
 (defun tspew--parse-type ()
   "Parse a type as found in compiler error messages"
@@ -360,81 +397,48 @@ with trailing whitespace"
   ;; type := decltype '(' expr ')' | [ cv ] symbol [ sexp [ symbol ] ] ] [ & | && | * ]
   ;; e.g.     const std::vector<double>::iterator
   ;;          ^- cv ^-symbol   ^- sexp ^-symbol
-  (funcall (tspew--parser-alternative
-            ;; decltype expression
-            (tspew--parser-sequential
-             (tspew--parser-optional (tspew--parser-keyword "constexpr"))
-             (tspew--parser-keyword "decltype")
-             (tspew--parser-paren-expr ?\())
-            (tspew--parser-sequential
-             ;; first, we can have const/constexpr/volatile
-             (tspew--parser-optional
-              (tspew--parser-multiple
-               (tspew--parser-alternative
-                (tspew--parser-keyword "constexpr")
-                #'tspew--parse-cv)))
-             ;; then one of three things
-             (tspew--parser-alternative
-              ;; a builtin int of some kind
-              (tspew--parser-builtin-int-type)
-              ;; a user-defined type (or float or double, which look like types)
-              (tspew--parser-sequential
-               ;; we sometimes see typename or struct first
-               (tspew--parser-optional
-                (tspew--parser-alternative
-                 (tspew--parser-keyword "typename")
-                 (tspew--parser-keyword "auto")
-                 (tspew--parser-keyword "struct")))
-               ;; the base name of the type
-               #'tspew--parse-symbol
-               ;; template args if any
-               (tspew--parser-optional (tspew--parser-sequential
-                                        (tspew--parser-paren-expr ?<)
-                                        (tspew--parser-optional #'tspew--parse-symbol)))))
-             ;; any of the above can have reference modifiers
-             (tspew--parser-optional (tspew--parser-sequential
-                                      (tspew--parser-optional #'tspew--parse-whitespace)
-                                      #'tspew--parse-ref-modifier))))))
+  (funcall (tspew--parser-grammar
+            (|
+             ;; decltype expression
+             ( (- "constexpr") "decltype" (tspew--parser-paren-expr ?\())
+
+             ;; normal types
+             (
+              ;; first, we can have const/constexpr/volatile
+              (* (| "constexpr" #'tspew--parse-cv))
+              ;; then one of two things:
+              (| (tspew--parser-builtin-int-type)     ;; a builtin int of some kind
+                 ( (- (| "typename" "auto" "struct")) ;; a user-defined type (or float or double, which look like types)
+                   #'tspew--parse-symbol
+                   (- ( (tspew--parser-paren-expr ?<)
+                        (- #'tspew--parse-symbol)))))
+              ;; either of the above can have reference modifiers
+              (- ( (- #'tspew--parse-whitespace) #'tspew--parse-ref-modifier)))))))
 
 (defun tspew--parse-function ()
   "Parse a function signature, as found in compiler error messages"
   ;; func := [ constexpr ] [ static ] type func-name param-list [memfn-qual] [ with-clause ]
-  (funcall (tspew--parser-sequential
-            (tspew--parser-optional #'tspew--parse-template-preamble)
-            ;; BOZO actually not sure which of these keywords will appear first
-            (tspew--parser-optional (tspew--parser-keyword "constexpr"))
-            (tspew--parser-optional (tspew--parser-keyword "static"))
-            ;; return type is optional because it could be a constructor
-            (tspew--parser-optional
-             (tspew--parser-sequential #'tspew--parse-type #'tspew--parse-whitespace))
-            #'tspew--parse-func-name
-            (tspew--parser-alternative
+  (funcall (tspew--parser-grammar
+            ( (- #'tspew--parse-template-preamble)
+              ;; BOZO actually not sure which of these keywords will appear first
+              (- "constexpr")
+              (- "static")
+              ;; return type is optional because it could be a constructor
+              (- ( #'tspew--parse-type #'tspew--parse-whitespace))
+              #'tspew--parse-func-name
+              (|
+               ;; gcc, and clang sometimes
+               ( (tspew--parser-paren-expr ?\()
+                 ;; we can have child classes with function call operators here,
+                 ;; which themselves can have child classes, and so on
+                 ;; gcc seems to format them like types but clang puts the arg lists in parens
+                 (- (<> #'tspew--parse-type (tspew--parser-paren-expr ?\()))
+                 (- ( #'tspew--parse-whitespace (- (tspew--parser-memfn-qual)) (- #'tspew--parse-with-clause))))
 
-             ;; gcc, and clang sometimes
-             (tspew--parser-sequential
-              (tspew--parser-paren-expr ?\()
-              ;; we can have child classes with function call operators here,
-              ;; which themselves can have child classes, and so on
-              ;; gcc seems to format them like types but clang puts the arg lists in parens
-              (tspew--parser-optional
-               (tspew--parser-alternating
-                #'tspew--parse-type
-                (tspew--parser-paren-expr ?\()))
-
-              (tspew--parser-optional
-               (tspew--parser-sequential
-                #'tspew--parse-whitespace
-                (tspew--parser-optional
-                 (tspew--parser-memfn-qual))        ;; member function qualifier
-                (tspew--parser-optional
-                 #'tspew--parse-with-clause))))     ;; with clause (like "[with X = Y, P = Q...]")
-
-             ;; clang's special function template specialization format (no "with" clause, no param list)
-             ;; ::fname<T, U...> vs
-             ;; ::fname(T, U...) [with T = X, U = Y...] in gcc
-             (tspew--parser-paren-expr ?<)
-
-             ))))
+               ;; clang's special function template specialization format (no "with" clause, no param list)
+               ;; ::fname<T, U...> vs
+               ;; ::fname(T, U...) [with T = X, U = Y...] in gcc
+               (tspew--parser-paren-expr ?<))))))
 
 ;; here I try to implement a two-part pretty-printing system (that is,
 ;; both indentation and "fill") as described in a paper by Rose and Welsh
