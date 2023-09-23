@@ -15,6 +15,15 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+;; TSpew is a minor mode for compilation buffers, not source code
+;; To use it you need to enable it after a compilation buffer is created,
+;; and they are not created until compilation begins. So you must tell
+;; compilation-mode to do it for you using compilation-mode-hook.
+;; For example:
+;; (add-hook 'compilation-mode-hook 'tspew-mode)
+;; will enable tspew for all compiles. You may prefer to restrict it to
+;; certain projects instead by writing your own hook.
+
 (require 'compile)
 (require 'cc-mode)
 (require 'cl-lib)
@@ -38,13 +47,6 @@ Suggested usage: (add-hook 'compilation-mode-hook 'tspew-mode)
 (modify-syntax-entry ?: "_" tspew-syntax-table)
 
 ;; now we can use (with-symbol-table tspew-syntax-table (movement-fn))
-
-;; we need a grammar for several reasons:
-;; 1) to resolve the fact that angle brackets may appear in operator overloads
-;; 2) for iterating over template parameters I want "XXX<YYY>" to be a single item
-;;    e.g. <int, std::allocator<int>> should be an sexp of length 2, not 3,
-;;    with elements "int" and "std::allocator<int>"
-;;    - although maybe this is OK? We have to stop before emitting "<" anyway
 
 (defvar tspew-indent-level c-basic-offset
   "Indentation amount for types in error messages")
@@ -125,15 +127,6 @@ within an error message")
         (tspew--handle-line tspew--parse-start line-end-marker)
         (setq-local tspew--parse-start (marker-position line-end-marker))))))
 
-;; TSpew is a minor mode for compilation buffers, not source code
-;; To use it you need to enable it after a compilation buffer is created,
-;; and they are not created until compilation begins. So you must tell
-;; compilation-mode to do it for you using compilation-mode-hook.
-;; For example:
-;; (add-hook 'compilation-mode-hook 'tspew-mode)
-;; will enable tspew for all compiles. You may prefer to restrict it to
-;; certain projects instead by writing your own hook.
-
 ;;;###autoload
 (define-minor-mode tspew-mode
   "Toggle tspew (Template Spew) mode"
@@ -152,17 +145,7 @@ within an error message")
 
 (add-to-list 'minor-mode-map-alist `(tspew-mode . ,tspew-mode-map))
 
-;; NEW (as of 8/4/2023) plan:
-;; Don't bother with start points
-;; We have functions for each production in the grammar that return an endpoint (found!) or nil.
-;; We make functions like "optional" and "alternative" that wrap them.
-;; Each parser only handles internal whitespace. We AND them implicitly.
-;; These low-level parsers will not interact with the fill/indent mechanism, so no printer parameter
-;; We will gather higher-level objects ("chunks") and then submit them to that facility
-
-;; point updated only on successful parse
-
-;; A lightweight parser formalism
+;; A lightweight parser formalism:
 ;; A Parser returns t and updates point if successful and returns nil otherwise
 
 ;;; parser combinators
@@ -325,7 +308,7 @@ of the form \"[with X = Y; Q = R; ...]\""
 
 ;; here we will use "parser" in the name to indicate that result is a parser,
 ;; so you have to funcall to use it. You can also use the result in a parser
-;; combinator (see below)
+;; combinator (see above)
 
 ;; parenthesized expression using the given start character
 (defun tspew--parser-paren-expr (parenc)
@@ -736,13 +719,6 @@ This is the primary engine for the formatting algorithm"
                 '()))
           '()))))))
 
-;; newlines in between these:
-;; 1) output static if present
-;; 2) format return type
-;; 3) if func-name has template args, format individually
-;;    otherwise, format it as a unit with the param list
-;; 4) if with-clause present, format it
-
 (defun tspew--format-quoted-expr (tstart tend)
   "Split up and indent a quoted region within an error message as necessary
 to meet line width requirements"
@@ -941,12 +917,6 @@ Returns nil if pos is not within a quoted range."
 given positions, taking into account overlays with invisible and
 before-string properties"
   (cl-assert (> end start))
-  ;; thinking about the algorithm
-  ;; we start in an unknown place. If at the start of an overlay with before-string, add its length
-  ;; if in an invisible overlay, note start point
-  ;; go to next overlay transition
-  ;; if now visible (or at end), subtract distance from prev pos/start point and mark us as visible again
-  ;; if we were visible previously, take no action
 
   (with-restriction start end
     (save-excursion
