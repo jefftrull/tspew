@@ -79,15 +79,13 @@ within an error message")
 (defvar-keymap tspew-mode-map
   :doc "Keymap for the tspew compilation minor mode"
   "C-c +" #'tspew-increase-detail
-  "C-c -" #'tspew-decrease-detail
-  )
+  "C-c -" #'tspew-decrease-detail)
 
 (defun tspew--remove-overlays ()
   (let ((overlays (seq-filter (lambda (ov) (overlay-get ov 'is-tspew))
                               (overlays-in (point-min) (point-max)))))
     (dolist (ov overlays)
-      (delete-overlay ov)))
-  )
+      (delete-overlay ov))))
 
 (defun tspew--parse-initialize (_proc)
   "Reset compilation output processing"
@@ -247,8 +245,7 @@ You can call this to see the exact form produced by the grammar, pre-expansion"
             `(tspew--parser-alternating ,(tspew--parser-grammar-expand (cadr grammar))
                                         ,(tspew--parser-grammar-expand (caddr grammar))))
         (t ;; it's a list, so it's the default - a sequential parser
-         `(tspew--parser-sequential ,@(mapcar #'tspew--parser-grammar-expand grammar)))))
-)))
+         `(tspew--parser-sequential ,@(mapcar #'tspew--parser-grammar-expand grammar))))))))
 
 ;; then the user interface
 (defmacro tspew--parser-grammar (grammar)
@@ -372,8 +369,7 @@ and the open paren of the arguments)"
 (defun tspew--parse-param-list ()
   "Parse a comma-separated function parameter list as seen
 in compiler error messages"
-  (forward-sexp)
-  )
+  (forward-sexp))
 
 (defun tspew--parser-builtin-int-type ()
   "Parse a builtin C++ integral type (int/char with modifiers),
@@ -972,16 +968,16 @@ before-string properties"
              (before (funcall before-string-at-point))
              (prev-invisible (get-char-property start 'invisible))
              (prev-pos start)
-             (distance (if before (+ (- end start) (length before)) (- end start))))
+             (dist (if before (+ (- end start) (length before)) (- end start))))
         (goto-char (next-overlay-change start))
         (while (< (point) end)
-          (when prev-invisible (setq distance (- distance (- (point) prev-pos))))
+          (when prev-invisible (setq dist (- dist (- (point) prev-pos))))
           (setq prev-invisible (get-char-property (point) 'invisible))
           (setq prev-pos (point))
           (if-let ((before (funcall before-string-at-point)))
-              (setq distance (+ distance (length before))))
+              (setq dist (+ dist (length before))))
           (goto-char (next-overlay-change (point))))
-        (if prev-invisible (- distance (- (point) prev-pos)) distance)))))
+        (if prev-invisible (- dist (- (point) prev-pos)) dist)))))
 
 (defun tspew-fold (&optional level)
   "Fold the quoted region containing point to the requested level.
