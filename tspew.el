@@ -1,6 +1,13 @@
 ;;; tspew.el --- Clean and format "template spew" errors from gcc and Clang  -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2023  Jeff Trull
+
 ;; Author: Jeff Trull <edaskel@att.net>
+;; Maintainer: Jeff Trull <edaskel@att.net>
+;; URL: https://github.com/jefftrull/tspew
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "26.1") (compat "29.1.4.2"))
+;; Keywords: c
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -18,6 +25,8 @@
 (require 'compile)
 (require 'cc-mode)
 (require 'cl-lib)
+
+(require 'compat)
 
 (defgroup tspew nil
   "Display C++ compilation results more cleanly.
@@ -166,7 +175,6 @@ within an error message")
 
 ;; A lightweight parser formalism
 ;; A Parser returns t and updates point if successful and returns nil otherwise
-
 ;;
 ;; parser combinators
 ;;
@@ -568,9 +576,7 @@ with trailing whitespace"
 
         (symbol
          (cl-case cmd
-
            (result format-instructions) ;; return result
-
            (exit
             (pop indentation-stack))    ;; restore previous indentation
 
@@ -584,7 +590,6 @@ with trailing whitespace"
 (defun tspew--format-region (start end &optional initial-indent)
   "Fill and indent region containing text.
 This is the primary engine for the formatting algorithm"
-
   (let ((printer (tspew--printer (or initial-indent 0))))
 
     ;; send one token at a time, inserting indentation and line breaks as required
@@ -616,7 +621,6 @@ This is the primary engine for the formatting algorithm"
               (funcall (tspew--parser-builtin-int-type))        ;; this might be an integral NTTP
               (funcall parse-with-stmt-tparam)                  ;; skip name
               (buffer-substring start (point)))))
-
       ;; do first X = Y pair
       (forward-char 3)   ;; skip " = "
       (setq result
@@ -629,7 +633,6 @@ This is the primary engine for the formatting algorithm"
         (cl-assert (equal (char-after) ?\;))
         (forward-char)
         (push (cons (+ (point) 1) 0) result)     ;; a newline after every "; "
-
         (skip-syntax-forward " ")
         (setq tparam
               (buffer-substring (point)
@@ -748,7 +751,6 @@ This is the primary engine for the formatting algorithm"
 ;; 3) if func-name has template args, format individually
 ;;    otherwise, format it as a unit with the param list
 ;; 4) if with-clause present, format it
-
 (defun tspew--format-quoted-expr (tstart tend)
   "Split up and indent a quoted region within an error message as necessary
 to meet line width requirements"
@@ -783,7 +785,6 @@ to meet line width requirements"
 
 (defun tspew--format-template-preamble (tstart tend)
   "Format a function template preamble e.g. template<class X, class Y, class Z>"
-
   (save-excursion
     (goto-char tstart)
     (forward-word)  ;; skip "template"
