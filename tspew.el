@@ -6,7 +6,7 @@
 ;; Maintainer: Jeff Trull <edaskel@att.net>
 ;; URL: https://github.com/jefftrull/tspew
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "26.1"))
+;; Package-Requires: ((emacs "26.1") (compat "29.1.4.2"))
 ;; Keywords: c
 
 ;; This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,8 @@
 (require 'compile)
 (require 'cc-mode)
 (require 'cl-lib)
+
+(require 'compat)
 
 (defgroup tspew nil
   "Display C++ compilation results more cleanly.
