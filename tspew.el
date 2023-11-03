@@ -831,7 +831,7 @@ with their depths, as an overlay property"
     (goto-char start)
     (let ((pos-stack nil)
           (max-depth 0))
-      (while (not (equal (point) end))
+      (while (progn (skip-syntax-forward "^()" end) (not (equal (point) end)))
         (cl-case (char-syntax (char-after))
           (?\(
            (push (1+ (point)) pos-stack))
@@ -840,8 +840,7 @@ with their depths, as an overlay property"
              (overlay-put ov 'tspew-depth (length pos-stack))
              (setq max-depth (max (length pos-stack) max-depth))
              (overlay-put ov 'is-tspew t)
-             (pop pos-stack)))
-          (t nil))
+             (pop pos-stack))))
         (forward-char 1))
 
       ;; create an overlay recording the maximum depth encountered
