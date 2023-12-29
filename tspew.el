@@ -115,6 +115,7 @@ within an error message")
   ;; not a symbol followed by parens. The same is true of anonymous classes
   ;; and lambdas, both of which have printed representations containing parens.
   (tspew--mark-special-case-symbols tspew--parse-start (point))
+  (tspew--mark-special-case-punctuation tspew--parse-start (point))
 
   (while (and (< tspew--parse-start (point))
               (> (count-lines tspew--parse-start (point)) 1))
@@ -776,6 +777,19 @@ This includes operator overloads, lambdas, and anonymous classes"
               end t)
         (with-silent-modifications
           (put-text-property (match-beginning 0) (match-end 0) 'syntax-table (string-to-syntax "_")))))))
+
+(defun tspew--mark-special-case-punctuation (start end)
+  "Mark certain operators that would otherwise appear to include parentheses
+to be \"punctuation\" during buffer navigation"
+  (let ((arrow-regexp "->")
+        (spaceship-regexp "<=>"))
+    (save-excursion
+      (goto-char start)
+      (while (re-search-forward
+              (concat "\\(" arrow-regexp "\\)\\|\\(" spaceship-regexp "\\)")
+              end t)
+        (with-silent-modifications
+          (put-text-property (match-beginning 0) (match-end 0) 'syntax-table (string-to-syntax ".")))))))
 
 ;; contents can be functions, function specializations, maybe other things?
 (defun tspew--handle-quoted-expr (tstart tend)
