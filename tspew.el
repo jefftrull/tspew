@@ -382,7 +382,7 @@ with trailing whitespace"
               (* (| "constexpr" #'tspew--parse-cv))
               ;; then one of two things:
               (| (tspew--parser-builtin-int-type)     ;; a builtin int of some kind
-                 ( (- (| "typename" "auto" "struct")) ;; a user-defined type (or float or double, which look like types)
+                 ( (- (| "typename" "auto" "struct" "class")) ;; a user-defined type (or float or double, which look like types)
                    #'tspew--parse-symbol
                    (- ( (tspew--parser-paren-expr ?<)
                         (- #'tspew--parse-symbol)))))
