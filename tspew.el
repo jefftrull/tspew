@@ -15,6 +15,8 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+;; Package-Requires: ((emacs "29.1"))
+
 ;; TSpew is a minor mode for compilation buffers, not source code
 ;; To use it you need to enable it after a compilation buffer is created,
 ;; and they are not created until compilation begins. So you must tell
@@ -98,8 +100,7 @@ within an error message")
 
   (tspew--remove-overlays)
   (setq tspew--parse-start nil)
-  (set (make-local-variable 'parse-sexp-lookup-properties) t)  ;; so we can special-case character syntax
-  )
+  (set (make-local-variable 'parse-sexp-lookup-properties) t))  ;; so we can special-case character syntax
 
 ;; create a compilation filter hook to incrementally parse errors
 (defun tspew--compilation-filter ()
@@ -420,7 +421,8 @@ with trailing whitespace"
 ;; both indentation and "fill") as described in a paper by Rose and Welsh
 ;; (1981), which is paywalled, but there is a nice description of it and
 ;; related work in "the PretzelBook", see
-;; http://www.literateprogramming.com/pretzelbook.pdf
+;; http://www.literateprogramming.com/pretzelbook.pdf, pp 42-47
+;; "A Short History of Prettyprinting".
 ;; There were apparently many similar approaches in the late 70s
 
 ;; The scanner is implemented in the literature (such as it is) as a parser
