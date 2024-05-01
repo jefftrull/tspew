@@ -284,11 +284,34 @@ in function template specializations"
          (skip-syntax-forward " ")
          t)))
 
+(defun tspew--parse-template-requires ()
+  "Parse the post-template requires, e.g. template<class X> requires requires(X x) {stuff...}"
+  (and (looking-at-p "requires requires(")
+       (progn
+         (forward-word 2)
+         (forward-sexp)
+         t)
+       (looking-at-p " {")
+       (progn
+         (skip-syntax-forward " ")
+         (forward-sexp)
+         t)
+       (skip-syntax-forward " ")))
+
 (defun tspew--parse-with-clause ()
   "Parse a type elaboration for function template instantiations
 of the form \"[with X = Y; Q = R; ...]\""
   (and (looking-at-p "\\[with ")
        (progn
+         (forward-sexp)
+         t)))
+
+(defun tspew--parse-postparam-requires ()
+  "Parse the requires appearing after the parameter list, e.g.
+foo(X x) requires requires{stuff...}"
+  (and (looking-at-p "requires requires{")
+       (progn
+         (forward-word 2)
          (forward-sexp)
          t)))
 
@@ -394,7 +417,7 @@ with trailing whitespace"
   "Parse a function signature, as found in compiler error messages"
   ;; func := [ constexpr ] [ static ] type func-name param-list [memfn-qual] [ with-clause ]
   (funcall (tspew--parser-grammar
-            ( (- #'tspew--parse-template-preamble)
+            ( (- ( #'tspew--parse-template-preamble (- #'tspew--parse-template-requires )))
               ;; REVIEW actually not sure which of these keywords will appear first
               (- "constexpr")
               (- "static")
@@ -408,7 +431,9 @@ with trailing whitespace"
                  ;; which themselves can have child classes, and so on
                  ;; gcc seems to format them like types but clang puts the arg lists in parens
                  (- (<> #'tspew--parse-type (tspew--parser-paren-expr ?\()))
-                 (- ( #'tspew--parse-whitespace (- (tspew--parser-memfn-qual)) (- #'tspew--parse-with-clause))))
+                 (- ( #'tspew--parse-whitespace (tspew--parser-memfn-qual) (- #'tspew--parse-with-clause)))
+                 (- ( #'tspew--parse-whitespace #'tspew--parse-postparam-requires))
+                 (- #'tspew--parse-whitespace))
 
                ;; clang's special function template specialization format (no "with" clause, no param list)
                ;; ::fname<T, U...> vs
@@ -628,6 +653,27 @@ This is the primary engine for the formatting algorithm"
       (forward-char)
       result)))  ;; skip trailing right bracket
 
+(defun tspew--format-postparam-requires (tstart tend)
+  "Format a \"requires\" phrase that comes after a function parameter list"
+  (save-excursion
+    ;; begin with an initial newline, then a newline after the first pair of open curly braces
+    (let ((result (list
+                   (cons tstart 0)
+                   (cons (+ tstart (length "requires requires{{")) tspew-indent-level))))
+      ;; find the end of the inner curly brace expression
+      (goto-char tstart)
+      (forward-word)
+      (forward-word)
+      (cl-assert (looking-at-p "{{"))
+      (forward-char)
+      (forward-sexp)
+      (when (looking-at-p " -> ") (forward-char 4))
+      (push (cons (point) 0) result)  ;; newline after end
+      ;; find open square bracket if present
+      (when (search-forward "[" tend)
+        (push (cons (point) tspew-indent-level) result))
+      result)))
+
 (defun tspew--format-function-region (start end)
   "Fill and indent region containing a function"
 
@@ -641,7 +687,12 @@ This is the primary engine for the formatting algorithm"
      (if (looking-at-p "template<")
          (let ((result (tspew--format-template-preamble (point) (progn (tspew--parse-template-preamble) (point)))))
            (skip-syntax-forward " ")
-           result)
+           ;; handle template requires, if present
+           (if (looking-at-p "requires")
+               (let ((requires-result
+                      (tspew--format-template-requires (point) (progn (tspew--parse-template-requires) (point)))))
+                 (append result requires-result))
+             result))
        '())
 
      ;; constexpr and/or static (both optional)
@@ -720,6 +771,14 @@ This is the primary engine for the formatting algorithm"
                    (list (cons wc-start 0))
                    (tspew--format-with-clause wc-start (point)))
                 '()))
+          '())
+
+        (if (looking-at-p "requires")
+            (tspew--format-postparam-requires
+             (point)
+             (progn
+               (tspew--parse-postparam-requires)
+               (point)))
           '()))))))
 
 (defun tspew--format-quoted-expr (tstart tend)
@@ -764,6 +823,20 @@ to meet line width requirements"
     (append
      (tspew--format-region (point) tend)
      (list (cons tend 0)))))   ;; terminal newline
+
+(defun tspew--format-template-requires (tstart tend)
+  "Format a \"requires\" clause following a template preamble"
+  ;; the syntax is complicated and indentation doesn't seem useful,
+  ;; so I'm just adding line breaks in sensible places:
+  (save-excursion
+    (goto-char tstart)
+    (forward-word 2)   ;; skip "requires requires"
+    (let ((requires-kwd-end (point)))
+      (forward-sexp)     ;; skip parenthesized expression
+      (skip-syntax-forward " ")
+      (if (looking-at-p "{")
+          (list (cons requires-kwd-end 0) (cons (point) 0) (cons tend 0))
+          (list (cons requires-kwd-end 0) (cons tend 0))))))
 
 (defun tspew--mark-special-case-symbols (start end)
   "Mark various tricky elements so they are considered \"symbol constituents\"
