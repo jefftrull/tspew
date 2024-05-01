@@ -839,7 +839,7 @@ to meet line width requirements"
 (defun tspew--mark-special-case-symbols (start end)
   "Mark various tricky elements so they are considered \"symbol constituents\"
 This includes operator overloads, lambdas, and anonymous classes"
-  (let ((opr-regexp "operator\\(<<\\|<\\|>>\\|>\\|()\\|\\[]\\)")
+  (let ((opr-regexp "operator\\(<<\\|<\\|>>\\|>\\|()\\|\\[]\\|==\\|!=\\)")
         (anon-class-regexp "(anonymous class)\\|{anonymous}")
         (lambda-clang-regexp "(lambda at [[:alnum:]_/.-]+:[0-9]+:[0-9]+)")
         (lambda-gcc-regexp "<lambda([^)]+)>"))
