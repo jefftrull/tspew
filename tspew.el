@@ -667,11 +667,9 @@ This is the primary engine for the formatting algorithm"
       (cl-assert (looking-at-p "{{"))
       (forward-char)
       (forward-sexp)
-      (when (looking-at-p " -> ") (forward-char 4))
-      (push (cons (point) 0) result)  ;; newline after end
       ;; find open square bracket if present
       (when (search-forward "[" tend)
-        (push (cons (point) tspew-indent-level) result))
+        (push (cons (point) (* 2 tspew-indent-level)) result))
       result)))
 
 (defun tspew--format-function-region (start end)
