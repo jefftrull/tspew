@@ -624,12 +624,12 @@ This is the primary engine for the formatting algorithm"
 
       ;; do first X = Y pair
       (forward-char 3)   ;; skip " = "
-      (push
-       (tspew--format-region
-        (point)
-        (progn (funcall parse-rhs) (point))
-        (+ (length tparam) 3))
-       result)
+      (setq result
+            (append result
+                    (tspew--format-region
+                     (point)
+                     (progn (funcall parse-rhs) (point))
+                     (+ (length tparam) 3))))
       (while (not (equal (point) end))
         (cl-assert (equal (char-after) ?\;))
         (forward-char)
@@ -644,12 +644,12 @@ This is the primary engine for the formatting algorithm"
                                   (point))))
 
         (forward-char 3)     ;; " = "
-        (push
-         (tspew--format-region
-          (point)
-          (progn (funcall parse-rhs) (point))
-          (+ (length tparam) 3))
-         result))
+        (setq result
+              (append result
+                      (tspew--format-region
+                       (point)
+                       (progn (funcall parse-rhs) (point))
+                       (+ (length tparam) 3)))))
       (forward-char)
       result)))  ;; skip trailing right bracket
 
