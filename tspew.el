@@ -347,10 +347,10 @@ the given opening character"
 
 ;; a specific string
 (defun tspew--parser-keyword (kwd)
-  "Create a parser for a pre-selected keyword.
-It requires - and consumes - trailing whitespace"
+  "Create a parser for a pre-selected keyword, which must be followed by a non-word.
+It consumes any trailing whitespace"
   (lambda ()
-    (and (looking-at-p (concat kwd "\\s "))   ;; trailing whitespace required
+    (and (looking-at-p (concat kwd "\\b"))   ;; trailing non-word
          (progn
            (forward-char (length kwd))
            (skip-syntax-forward " ")
