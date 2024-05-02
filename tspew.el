@@ -383,7 +383,8 @@ in compiler error messages"
   "Parse a builtin C++ integral type (int/char with modifiers),
 with trailing whitespace"
   (tspew--parser-grammar
-   (| ( (- "unsigned") "char")
+   (| "bool"
+      ( (- "unsigned") "char")
       ( (* (| "long" "short" "unsigned")) "int"))))
 
 (defun tspew--parse-type ()
