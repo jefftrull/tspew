@@ -257,6 +257,13 @@ a sequential parser."
           (goto-char start)
           nil))))
 
+; both "operator-" and "Foo" are made up of symbol-constituents but the former cannot be a type
+(defun tspew--parse-type-symbol ()
+  "Parse a symbol-like type, excluding the operator keyword"
+  (if (looking-at-p "operator")
+      nil
+    (tspew--parse-symbol)))
+
 (defun tspew--parse-cv ()
   "Parse the const or volatile keywords"
   (and (or (looking-at-p "const\\s ") (looking-at "volatile\\s "))
@@ -413,7 +420,7 @@ with trailing whitespace"
               ;; then one of two things:
               (| #'tspew--parse-builtin-int-no-whitespace     ;; a builtin int of some kind
                  ( (- (| "typename" "auto" "struct" "class")) ;; a user-defined type (or float or double, which look like types)
-                   #'tspew--parse-symbol
+                   #'tspew--parse-type-symbol
                    (- ( (tspew--parser-paren-expr ?<)
                         (- #'tspew--parse-symbol)))))
               ;; either of the above can have reference modifiers
