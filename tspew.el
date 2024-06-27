@@ -387,6 +387,11 @@ with trailing whitespace"
       ( (- "unsigned") "char")
       ( (* (| "long" "short" "unsigned")) "int"))))
 
+(defun tspew--parse-builtin-int-no-whitespace ()
+  "Parse a builtin C++ integral type (int/char with modifiers)"
+  (and (funcall (tspew--parser-builtin-int-type))
+       (progn (skip-syntax-backward " ") t)))
+
 (defun tspew--parse-type ()
   "Parse a type as found in compiler error messages"
   ;; either a parenthesized decltype expression, OR
@@ -406,7 +411,7 @@ with trailing whitespace"
               ;; first, we can have const/constexpr/volatile
               (* (| "constexpr" #'tspew--parse-cv))
               ;; then one of two things:
-              (| (tspew--parser-builtin-int-type)     ;; a builtin int of some kind
+              (| #'tspew--parse-builtin-int-no-whitespace     ;; a builtin int of some kind
                  ( (- (| "typename" "auto" "struct" "class")) ;; a user-defined type (or float or double, which look like types)
                    #'tspew--parse-symbol
                    (- ( (tspew--parser-paren-expr ?<)
