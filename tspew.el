@@ -440,11 +440,12 @@ with trailing whitespace"
               (|
                ;; gcc, and clang sometimes
                ( (tspew--parser-paren-expr ?\()
+                 (- ( #'tspew--parse-whitespace (- (tspew--parser-memfn-qual))))
                  ;; we can have child classes with function call operators here,
                  ;; which themselves can have child classes, and so on
                  ;; gcc seems to format them like types but clang puts the arg lists in parens
                  (- (<> #'tspew--parse-type (tspew--parser-paren-expr ?\()))
-                 (- ( #'tspew--parse-whitespace (- (tspew--parser-memfn-qual)) (- #'tspew--parse-with-clause)))
+                 (- #'tspew--parse-with-clause)
                  (- ( #'tspew--parse-whitespace #'tspew--parse-postparam-requires))
                  (- #'tspew--parse-whitespace))
 
