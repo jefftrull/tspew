@@ -424,7 +424,14 @@ with trailing whitespace"
                    (- ( (tspew--parser-paren-expr ?<)
                         (- #'tspew--parse-symbol)))))
               ;; either of the above can have reference modifiers
-              (- ( (- #'tspew--parse-whitespace) #'tspew--parse-ref-modifier)))))))
+              (- ( (- #'tspew--parse-whitespace) #'tspew--parse-ref-modifier))
+              (- (#'tspew--parse-whitespace #'tspew--parse-anonymous-tag)))))))
+
+(defun tspew--parse-anonymous-tag ()
+  "Parse <anonymous>"
+  (when (looking-at "<anonymous>")
+        (forward-char 11)
+        t))
 
 (defun tspew--parse-function ()
   "Parse a function signature, as found in compiler error messages"
