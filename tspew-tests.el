@@ -16,6 +16,22 @@
     (with-syntax-table tspew-syntax-table
       (and (funcall f) (= (point) (point-max))))))
 
+
+(defun tspew-test-format-in-buffer (f s)
+  "Run test function F in buffer containing only string S"
+  (with-temp-buffer
+    (setq-local tspew--fill-width 20)
+    ;; obey text properties
+    (setq-local parse-sexp-lookup-properties t)
+    (insert s)
+    (let ((end (point)))
+      (goto-char 0)
+      ;; set up text properties
+      (tspew--mark-special-case-symbols (point) end)
+      (tspew--mark-special-case-punctuation (point) end)
+      (with-syntax-table tspew-syntax-table
+        (funcall f (point) end)))))
+
 ;; these are basically just regression tests, for now
 
 (ert-deftest tspew-parse-tc1 ()
@@ -59,6 +75,12 @@
   (should (tspew-test-run-in-buffer #'tspew--parse-function "cvc5::internal::expr::attr::AttrHash<V>::iterator cvc5::internal::expr::attr::AttrHash<V>::find(int) const [with V = cvc5::internal::NodeTemplate<true>]"))
   (should (tspew-test-run-in-buffer #'tspew--parse-function "typename AttrKind::value_type cvc5::internal::expr::attr::AttributeManager::getAttribute(cvc5::internal::expr::NodeValue*, const AttrKind&) const [with AttrKind = cvc5::internal::expr::Attribute<cvc5::internal::theory::arith::RealAlgebraicNumberVarAttributeId, cvc5::internal::NodeTemplate<true> >; typename AttrKind::value_type = cvc5::internal::NodeTemplate<true>]"))
   (should (tspew-test-run-in-buffer #'tspew--parse-function "cvc5::internal::Node cvc5::internal::BoundVarManager::mkBoundVar(cvc5::internal::Node, cvc5::internal::TypeNode) [with T = cvc5::internal::expr::Attribute<cvc5::internal::theory::arith::RealAlgebraicNumberVarAttributeId, cvc5::internal::NodeTemplate<true> >; cvc5::internal::Node = cvc5::internal::NodeTemplate<true>]"))
+  (should (tspew-test-run-in-buffer #'tspew--parse-function "cvc5::internal::Node::substitute<std::__detail::_Node_const_iterator<std::pair<const cvc5::internal::Node&, const cvc5::internal::Node&>, false, true> >(std::__detail::_Node_const_iterator<std::pair<const cvc5::internal::Node&, const cvc5::internal::Node&>, false, true>, std::__detail::_Node_const_iterator<std::pair<const cvc5::internal::Node&, const cvc5::internal::Node&>, false, true>, std::unordered_map<const cvc5::internal::Node&, const cvc5::internal::Node&>&) const::<lambda(const auto:27&)>"))
+  (should (tspew-test-run-in-buffer #'tspew--parse-function "template<class _U1, class _U2, typename std::enable_if<(_MoveConstructiblePair<_U1, _U2>() && _ImplicitlyMoveConvertiblePair<_U1, _U2>()), bool>::type <anonymous> > constexpr std::pair<_T1, _T2>::pair(_U1&&, _U2&&) [with _U2 = _U1; typename std::enable_if<(std::_PCC<true, _T1, _T2>::_MoveConstructiblePair<_U1, _U2>() && std::_PCC<true, _T1, _T2>::_ImplicitlyMoveConvertiblePair<_U1, _U2>()), bool>::type <anonymous> = _U2; _T1 = const cvc5::internal::Node&; _T2 = cvc5::internal::prop::SatValue]"))
+
+  (should (tspew-test-format-in-buffer #'tspew--format-function-region "template<class _U1, class _U2, typename std::enable_if<(_MoveConstructiblePair<_U1, _U2>() && _ImplicitlyMoveConvertiblePair<_U1, _U2>()), bool>::type <anonymous> > constexpr std::pair<_T1, _T2>::pair(_U1&&, _U2&&) [with _U2 = _U1; typename std::enable_if<(std::_PCC<true, _T1, _T2>::_MoveConstructiblePair<_U1, _U2>() && std::_PCC<true, _T1, _T2>::_ImplicitlyMoveConvertiblePair<_U1, _U2>()), bool>::type <anonymous> = _U2; _T1 = const cvc5::internal::Node&; _T2 = cvc5::internal::prop::SatValue]"))
+
+
   ;; types
   (should (tspew-test-run-in-buffer #'tspew--parse-type "int"))
   (should (tspew-test-run-in-buffer #'tspew--parse-type "uint64_t"))
