@@ -14,7 +14,7 @@
       (tspew--mark-special-case-symbols (point) end)
       (tspew--mark-special-case-punctuation (point) end))
     (with-syntax-table tspew-syntax-table
-      (funcall f))))
+      (and (funcall f) (= (point) (point-max))))))
 
 ;; these are basically just regression tests, for now
 
