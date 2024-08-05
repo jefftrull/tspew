@@ -287,7 +287,7 @@ in function template specializations"
   (and (looking-at-p "template<")
        (progn
          (forward-word 1)
-         (forward-sexp 1)
+         (forward-list 1)
          (skip-syntax-forward " ")
          t)))
 
@@ -296,12 +296,12 @@ in function template specializations"
   (and (looking-at-p "requires requires(")
        (progn
          (forward-word 2)
-         (forward-sexp)
+         (forward-list)
          t)
        (looking-at-p " {")
        (progn
          (skip-syntax-forward " ")
-         (forward-sexp)
+         (forward-list)
          t)
        (skip-syntax-forward " ")))
 
@@ -310,7 +310,7 @@ in function template specializations"
 of the form \"[with X = Y; Q = R; ...]\""
   (and (looking-at-p "\\[with ")
        (progn
-         (forward-sexp)
+         (forward-list)
          t)))
 
 (defun tspew--parse-postparam-requires ()
@@ -319,7 +319,7 @@ foo(X x) requires requires{stuff...}"
   (and (looking-at-p "requires requires{")
        (progn
          (forward-word 2)
-         (forward-sexp)
+         (forward-list)
          t)))
 
 (defun tspew--parse-ref-modifier ()
@@ -333,7 +333,7 @@ foo(X x) requires requires{stuff...}"
   "Parse a curly braced sequence (i.e. of types or integers)"
   (and (equal (char-after) ?{)
        (progn
-         (forward-sexp)
+         (forward-list)
          t)))
 
 ;;; parser generators (take a param, return a parser)
@@ -349,7 +349,7 @@ the given opening character"
   (lambda ()
     (and (equal (char-after) parenc)
          (progn
-           (forward-sexp)    ;; this could theoretically fail but again, this is compiler output...
+           (forward-list)    ;; this could theoretically fail but again, this is compiler output...
            t))))
 
 ;; a specific string
@@ -384,7 +384,7 @@ and the open paren of the arguments)"
 (defun tspew--parse-param-list ()
   "Parse a comma-separated function parameter list as seen
 in compiler error messages"
-  (forward-sexp))
+  (forward-list))
 
 (defun tspew--parser-builtin-int-type ()
   "Parse a builtin C++ integral type (int/char with modifiers),
@@ -535,7 +535,7 @@ with trailing whitespace"
                   (tspew--visible-distance (point)
                                            (save-excursion
                                              (backward-char)       ;; start at open "paren"
-                                             (forward-sexp)        ;; skip over balanced parens
+                                             (forward-list)        ;; skip over balanced parens
                                              (point))))))
 
        ((equal (char-syntax (string-to-char tok)) ?\))
