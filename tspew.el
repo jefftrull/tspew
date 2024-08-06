@@ -29,6 +29,25 @@
 (require 'compile)
 (require 'cc-mode)
 (require 'cl-lib)
+(require 'peg)
+
+;; PEG hacks
+
+ ;; work around bug 72131 in peg.el
+(when (equal (cadr (assoc 'symbol peg-syntax-classes)) ?s)
+  ;; the symbol class is actually represented by an underscore
+  (setf (car (alist-get 'symbol peg-syntax-classes)) ?_))
+
+;; create my own fast rule for balanced paren expressions
+;; (sexps minus solitary symbols)
+(cl-defmethod peg--translate ((_ (eql tspew--list)))
+  '(when (and (not (eobp))
+              (eql (char-syntax (char-after)) ?\())
+     (condition-case _
+         (forward-list 1)
+       (scan-error nil)
+       (:success t))))
+(push 'tspew--list peg-leaf-types)
 
 (defgroup tspew nil
   "Display C++ compilation results more cleanly.
@@ -147,317 +166,215 @@ within an error message")
 
 (add-to-list 'minor-mode-map-alist `(tspew-mode . ,tspew-mode-map))
 
-;; A lightweight parser formalism:
-;; A Parser returns t and updates point if successful and returns nil otherwise
-
-;;; parser combinators
-
-;; some combinators for use in defining higher-level structures
-;; these accept parsers and make new parsers from them
-
-(defun tspew--parser-optional (p)
-  "Create a parser that optionally parses its argument (i.e. ignores any failure)"
-  (lambda () (or (funcall p) t)))
-
-(defmacro tspew--parser-alternative (&rest parsers)
-  "Create a parser that attempts to parse one of several input parsers,
-passing if any do"
-  `(lambda ()
-     (let ((start (point)))
-       ;; this whole thing is a macro because of this - "or" is not a function, so we cannot "apply" it.
-       ;; instead we build the expression through a macro
-       (if (or ,@(mapcar (lambda (p) (list 'funcall p)) parsers))
-           t
-         (goto-char start)
-         nil))))
-
-(defmacro tspew--parser-sequential (&rest parsers)
-  "Create a parser that attempts to parse a series of input parsers in sequence,
-passing if all do"
-  `(lambda ()
-     (let ((start (point)))
-       (if (and ,@(mapcar (lambda (p) (list 'funcall p)) parsers))
-           t
-         (goto-char start)
-         nil))))
-
-(defun tspew--parser-multiple (p)
-  "Create a parser that parses one or more of the input parser, greedily.
-To parse zero or more, combine with tspew--parser-optional"
-  (lambda ()
-    (and (funcall p)            ;; at least one
-         (progn
-           (while (funcall p))  ;; run until one fails
-           t))))                ;; and return true
-
-(defun tspew--parser-alternating (p1 p2)
-  "Create a parser that parses p1 and p2 alternately,
-passing if at least one parser matches:
-p1 [p2 [p1 [p2 [p1 ...]]]]"
-  (lambda ()
-    (and (funcall p1)
-         (progn
-           (while (and (funcall p2) (funcall p1)))
-           t))))
-
-;; syntactic sugar for combinators - a grammar constructor
-;; implementation first
-(defun tspew--parser-grammar-expand (grammar)
-  "Recursive function implementation of tspew--parser-grammar.
-You can call this to see the exact form produced by the grammar, pre-expansion"
-  (if (not grammar)
-      (lambda () t)     ;; pass and consume no input
-    (cond
-     ((stringp grammar)
-      `(tspew--parser-keyword ,grammar))    ;; interpret as keyword
-     ((not (listp grammar))
-      grammar)                              ;; unknown, just pass through (future extension?)
-     ((or (equal (car grammar) 'function)   ;; the name of a function (parser, most likely)
-          (and (symbolp (car grammar))      ;; a parser generator
-               (string-prefix-p "tspew--parser-" (symbol-name (car grammar)))))
-          grammar)                          ;; existing parser - just pass it through
-     (t (cl-case (car grammar)
-        (- (cl-assert (equal (length grammar) 2))
-           `(tspew--parser-optional ,(tspew--parser-grammar-expand (cadr grammar))))
-        (| `(tspew--parser-alternative
-             ,@(mapcar #'tspew--parser-grammar-expand (cdr grammar))))
-        (+ (cl-assert (equal (length grammar) 2))
-           `(tspew--parser-multiple ,(tspew--parser-grammar-expand (cadr grammar))))
-        (* (cl-assert (equal (length grammar) 2))
-           `(tspew--parser-optional
-             (tspew--parser-multiple ,(tspew--parser-grammar-expand (cadr grammar)))))
-        (<> (cl-assert (equal (length grammar) 3))
-            `(tspew--parser-alternating ,(tspew--parser-grammar-expand (cadr grammar))
-                                        ,(tspew--parser-grammar-expand (caddr grammar))))
-        (t ;; it's a list, so it's the default - a sequential parser
-         `(tspew--parser-sequential ,@(mapcar #'tspew--parser-grammar-expand grammar))))))))
-
-;; then the user interface
-(defmacro tspew--parser-grammar (grammar)
-  "Create a parser from combinators using shorthand.
-An sexp that starts with:
-- becomes optional
-| becomes alternative
-+ becomes multiple (at least one)
-* becomes optional multiple (zero or more)
-<> becomes alternating (at least the first, then second first second...)
-Without one of those initial symbols, the inputs are considered to be
-a sequential parser."
-  (tspew--parser-grammar-expand grammar))
-
 ;;; low-level (leaf) parsers
+;; most of the time we can get away with just defining a rule for them but sometimes
+;; we need a parse function (for use by formatting code) or (more rarely) a "parser"
+;; function, which produces parse functions from arguments
 
-(defun tspew--parse-symbol ()
-  "Parse a symbol (a string of characters with word or \"symbol constituent\" syntax)"
-  (let ((start (point)))
-    ;; skip forward past word and symbol constituents
-    ;; forward-symbol skips initial whitespace also, which I don't want
-    (or (> (skip-syntax-forward "w_") 0)
-        (progn
-          (goto-char start)
-          nil))))
+;; A symbol (a string of characters with word or \"symbol constituent\" syntax)
+(define-peg-rule tspew--symbol ()
+                (+ (or (syntax-class word) (syntax-class symbol))))
 
-; both "operator-" and "Foo" are made up of symbol-constituents but the former cannot be a type
-(defun tspew--parse-type-symbol ()
-  "Parse a symbol-like type, excluding the operator keyword"
-  (if (looking-at-p "operator")
-      nil
-    (tspew--parse-symbol)))
+;; A symbol-like type, excluding the operator keyword
+(define-peg-rule tspew--type-symbol ()
+                 ;; both "operator-" and "Foo" are made up of symbol-constituents
+                 ;; but the former cannot be a type
+                 (not "operator") tspew--symbol)
 
-(defun tspew--parse-cv ()
-  "Parse the const or volatile keywords"
-  (and (or (looking-at-p "const\\s ") (looking-at "volatile\\s "))
-       (progn
-         (skip-syntax-forward "w")
-         (skip-syntax-forward " ")
-         t)))
+;; The const or volatile keywords
+(define-peg-rule tspew--cv ()
+                 (or "const" "volatile")
+                 (opt (syntax-class whitespace)))
 
-;; mandatory whitespace
-(defun tspew--parse-whitespace ()
-  "Parse one or more whitespace characters"
-  (let ((start (point)))
-    (or (> (skip-syntax-forward " ") 0)
-        (progn
-          (goto-char start)
-          nil))))
+;; one or more whitespace characters
+(define-peg-rule tspew--whitespace ()
+                 (+ (syntax-class whitespace)))
 
+;; the initial template<class X, class Y...> in function template specializations
+(define-peg-rule tspew--template-preamble ()
+                 "template"
+                 (if (char ?<))
+                 (tspew--list)
+                 (* (syntax-class whitespace)))
+
+;; parse function for tspew--template-preamble
 (defun tspew--parse-template-preamble ()
-  "Parse the initial template<class X, class Y...>
-in function template specializations"
-  (and (looking-at-p "template<")
-       (progn
-         (forward-word 1)
-         (forward-list 1)
-         (skip-syntax-forward " ")
-         t)))
+  "Parse the template<...> part of a function template"
+  (peg-run (peg tspew--template-preamble)))
+
+;; post-template "requires" phrase
+(define-peg-rule tspew--template-requires ()
+                 "requires requires"
+                 (if (char ?\())
+                 (tspew--list)
+                 (syntax-class whitespace)
+                 (if (char ?\{))
+                 (tspew--list)
+                 (* (syntax-class whitespace)))
 
 (defun tspew--parse-template-requires ()
   "Parse the post-template requires, e.g. template<class X> requires requires(X x) {stuff...}"
-  (and (looking-at-p "requires requires(")
-       (progn
-         (forward-word 2)
-         (forward-list)
-         t)
-       (looking-at-p " {")
-       (progn
-         (skip-syntax-forward " ")
-         (forward-list)
-         t)
-       (skip-syntax-forward " ")))
+  (peg-run (peg tspew--template-requires)))
+
+;; "with" clause following a function template, giving the template arguments actually used
+(define-peg-rule tspew--with-clause ()
+                 (if "[with ")
+                 (tspew--list))
 
 (defun tspew--parse-with-clause ()
   "Parse a type elaboration for function template instantiations
 of the form \"[with X = Y; Q = R; ...]\""
-  (and (looking-at-p "\\[with ")
-       (progn
-         (forward-list)
-         t)))
+  (peg-run (peg tspew--with-clause)))
+
+(define-peg-rule tspew--postparam-requires ()
+                 "requires requires"
+                 (if (char ?\{))
+                 (tspew--list))
 
 (defun tspew--parse-postparam-requires ()
   "Parse the requires appearing after the parameter list, e.g.
 foo(X x) requires requires{stuff...}"
-  (and (looking-at-p "requires requires{")
-       (progn
-         (forward-word 2)
-         (forward-list)
-         t)))
+  (peg-run (peg tspew--with-clause)))
 
-(defun tspew--parse-ref-modifier ()
-  "Parse a pointer, ref, or rvalue ref"
-  (and (looking-at-p "\\*\\|&\\|&&")
-       (progn
-         (skip-syntax-forward "_")
-         t)))
+;; a pointer, ref, or rvalue ref
+(define-peg-rule tspew--ref-modifier () (or "*" "&" "&&"))
 
-(defun tspew--parse-sequence ()
-  "Parse a curly braced sequence (i.e. of types or integers)"
-  (and (equal (char-after) ?{)
-       (progn
-         (forward-list)
-         t)))
+;; a curly braced sequence (i.e. of types or integers)
+(define-peg-rule tspew--sequence ()
+                 (if (char ?\{))
+                 (tspew--list))
 
 ;;; parser generators (take a param, return a parser)
 
 ;; here we will use "parser" in the name to indicate that result is a parser,
-;; so you have to funcall to use it. You can also use the result in a parser
-;; combinator (see above)
+;; so you have to funcall to use it.
 
 ;; parenthesized expression using the given start character
+;; despite appearances peg rules cannot accept arguments, and "peg"
+;; is a macro, use some quoting tricks to return an unnamed peg expression
+(defun tspew--make-peg-paren-expr (parenc)
+  (eval `(peg (if (char ,parenc)) (tspew--list))))
+
 (defun tspew--parser-paren-expr (parenc)
   "Parse a balanced parenthesis expression starting with
 the given opening character"
-  (lambda ()
-    (and (equal (char-after) parenc)
-         (progn
-           (forward-list)    ;; this could theoretically fail but again, this is compiler output...
-           t))))
+  (let ((seq (tspew--make-peg-paren-expr parenc)))
+    (lambda ()
+      (peg-run seq))))
 
 ;; a specific string
-(defun tspew--parser-keyword (kwd)
+(defun tspew--make-peg-keyword (kwd)
+  (eval `(peg ,kwd (eow) (* (syntax-class whitespace)))))
+
   "Create a parser for a pre-selected keyword, which must be followed by a non-word.
 It consumes any trailing whitespace"
-  (lambda ()
-    (and (looking-at-p (concat kwd "\\b"))   ;; trailing non-word
-         (progn
-           (forward-char (length kwd))
-           (skip-syntax-forward " ")
-           t))))
+(define-peg-rule tspew--memfn-qual ()
+  (or "const" "volatile" "&&" "&") (eow) (* (syntax-class whitespace)))
 
-(defun tspew--parser-memfn-qual ()
+(defun tspew--parse-memfn-qual ()
   "Parse a member function qualifier, consuming trailing whitespace"
-  (tspew--parser-alternative
-   (tspew--parser-keyword "const")
-   (tspew--parser-keyword "volatile")
-   (tspew--parser-keyword "&&")
-   (tspew--parser-keyword "&")))
+    (peg-run (peg tspew--memfn-qual)))
 
 ;;; parser utilities
 
 ;; composed, higher-level parsers
 
+(define-peg-rule tspew--func-name ()
+;; for the moment, assume we can use a "type" which is similar, possibly identical
+                 tspew--type)
+
 (defun tspew--parse-func-name ()
   "Parse a function name (the bit between the return type
 and the open paren of the arguments)"
-  ;; for the moment, assume we can use a "type" which is similar, possibly identical
-  (tspew--parse-type))
+  (peg-run (peg tspew--func-name)))
+
+(define-peg-rule tspew--param-list ()
+                 (if (syntax-class open))
+                 (tspew--list))
 
 (defun tspew--parse-param-list ()
   "Parse a comma-separated function parameter list as seen
 in compiler error messages"
-  (forward-list))
+  (peg-run (peg tspew--param-list)))
 
-(defun tspew--parser-builtin-int-type ()
+(define-peg-rule tspew--builtin-int-type ()
+                 (or "bool"
+                     (and (opt "unsigned") "char")
+                     (and (* (or "long" "short" "unsigned")) "int")))
+
+(defun tspew--parse-builtin-int-type ()
   "Parse a builtin C++ integral type (int/char with modifiers),
 with trailing whitespace"
-  (tspew--parser-grammar
-   (| "bool"
-      ( (- "unsigned") "char")
-      ( (* (| "long" "short" "unsigned")) "int"))))
+    (peg-run (peg tspew--builtin-int-type (+ (syntax-class whitespace)))))
 
-(defun tspew--parse-builtin-int-no-whitespace ()
-  "Parse a builtin C++ integral type (int/char with modifiers)"
-  (and (funcall (tspew--parser-builtin-int-type))
-       (progn (skip-syntax-backward " ") t)))
+;; <anonymous> is sometimes found after a typename in a with clause
+(define-peg-rule tspew--anonymous-tag () "<anonymous>")
+
+;; A type as found in compiler error messages
+(define-peg-rule
+    tspew--type ()
+    ;; either a parenthesized decltype expression, OR
+    ;; cv qualifier, followed by symbol, followed optionally
+    ;; by a parenthesized expression (angle brackets), followed
+    ;; optionally by a symbol (member types, pointer/ref indicators, etc.)
+    ;; type := decltype '(' expr ')' | [ cv ] symbol [ sexp [ symbol ] ] ] [ & | && | * ]
+    ;; e.g.     const std::vector<double>::iterator
+    ;;          ^- cv ^-symbol   ^- sexp ^-symbol
+    (or
+     ;; decltype expression
+     (and (opt "constexpr ") "decltype " (if (char ?\()) (tspew--list))
+
+     ;; normal types
+     (and
+      ;; first, we can have const/constexpr/volatile
+      (* (or "constexpr " tspew--cv))
+      ;; then one of two things:
+      (or
+       ;; a builtin int of some kind
+       tspew--builtin-int-type
+       ;; a user-defined type (or float or double, which look like types)
+       (and (opt (or "typename " "auto " "struct " "class "))
+            tspew--type-symbol
+            (opt (and (if (char ?<)) (tspew--list)
+                      (opt tspew--symbol)))))
+      ;; either of the above can have reference modifiers
+      (opt (and (opt tspew--whitespace) tspew--ref-modifier))
+      (opt (and tspew--whitespace tspew--anonymous-tag)))))
 
 (defun tspew--parse-type ()
   "Parse a type as found in compiler error messages"
-  ;; either a parenthesized decltype expression, OR
-  ;; cv qualifier, followed by symbol, followed optionally
-  ;; by a parenthesized expression (angle brackets), followed
-  ;; optionally by a symbol (member types, pointer/ref indicators, etc.)
-  ;; type := decltype '(' expr ')' | [ cv ] symbol [ sexp [ symbol ] ] ] [ & | && | * ]
-  ;; e.g.     const std::vector<double>::iterator
-  ;;          ^- cv ^-symbol   ^- sexp ^-symbol
-  (funcall (tspew--parser-grammar
-            (|
-             ;; decltype expression
-             ( (- "constexpr") "decltype" (tspew--parser-paren-expr ?\())
+  (peg-run (peg tspew--type)))
 
-             ;; normal types
-             (
-              ;; first, we can have const/constexpr/volatile
-              (* (| "constexpr" #'tspew--parse-cv))
-              ;; then one of two things:
-              (| #'tspew--parse-builtin-int-no-whitespace     ;; a builtin int of some kind
-                 ( (- (| "typename" "auto" "struct" "class")) ;; a user-defined type (or float or double, which look like types)
-                   #'tspew--parse-type-symbol
-                   (- ( (tspew--parser-paren-expr ?<)
-                        (- #'tspew--parse-symbol)))))
-              ;; either of the above can have reference modifiers
-              (- ( (- #'tspew--parse-whitespace) #'tspew--parse-ref-modifier))
-              (- (#'tspew--parse-whitespace #'tspew--parse-anonymous-tag)))))))
-
-(defun tspew--parse-anonymous-tag ()
-  "Parse <anonymous>"
-  (when (looking-at "<anonymous>")
-        (forward-char 11)
-        t))
+(define-peg-rule
+    tspew--function ()
+    ;; func := [ constexpr ] [ static ] type func-name param-list [memfn-qual] [ with-clause ]
+    (and (opt (and tspew--template-preamble (opt tspew--template-requires)))
+         ;; REVIEW actually not sure which of these keywords will appear first
+         (opt "constexpr ")
+         (opt "static ")
+         ;; return type is optional because it could be a constructor
+         (opt (and tspew--type tspew--whitespace))
+         tspew--func-name
+         (or
+          ;; gcc, and clang sometimes
+          (and (if (char ?\()) (tspew--list) (opt tspew--whitespace)
+               (opt tspew--memfn-qual)
+               ;; we can have child classes with function call operators here,
+               ;; which themselves can have child classes, and so on
+               ;; gcc seems to format them like types but clang puts the arg lists in parens
+               (opt (and tspew--type
+                         (* (and (if (char ?\()) (tspew--list) tspew--type))
+                         (opt tspew--whitespace)))
+               (opt (and tspew--with-clause (opt tspew--whitespace)))
+               (opt (and tspew--postparam-requires (opt tspew--whitespace))))
+          ;; clang's special function template specialization format (no "with" clause, no param list)
+          ;; ::fname<T, U...> vs
+          ;; ::fname(T, U...) [with T = X, U = Y...] in gcc
+          (and (if (char ?<)) (tspew--list)))))
 
 (defun tspew--parse-function ()
   "Parse a function signature, as found in compiler error messages"
-  ;; func := [ constexpr ] [ static ] type func-name param-list [memfn-qual] [ with-clause ]
-  (funcall (tspew--parser-grammar
-            ( (- ( #'tspew--parse-template-preamble (- #'tspew--parse-template-requires )))
-              ;; REVIEW actually not sure which of these keywords will appear first
-              (- "constexpr")
-              (- "static")
-              ;; return type is optional because it could be a constructor
-              (- ( #'tspew--parse-type #'tspew--parse-whitespace))
-              #'tspew--parse-func-name
-              (|
-               ;; gcc, and clang sometimes
-               ( (tspew--parser-paren-expr ?\() (- #'tspew--parse-whitespace)
-                 (- (tspew--parser-memfn-qual))
-                 ;; we can have child classes with function call operators here,
-                 ;; which themselves can have child classes, and so on
-                 ;; gcc seems to format them like types but clang puts the arg lists in parens
-                 (- ((<> #'tspew--parse-type (tspew--parser-paren-expr ?\()) (- #'tspew--parse-whitespace)))
-                 (- (#'tspew--parse-with-clause (- #'tspew--parse-whitespace)))
-                 (- (#'tspew--parse-postparam-requires (- #'tspew--parse-whitespace))))
-               ;; clang's special function template specialization format (no "with" clause, no param list)
-               ;; ::fname<T, U...> vs
-               ;; ::fname(T, U...) [with T = X, U = Y...] in gcc
-               (tspew--parser-paren-expr ?<))))))
+  (peg-run (peg tspew--function)))
 
 ;;; The indent/fill algorithm
 
@@ -629,7 +546,8 @@ This is the primary engine for the formatting algorithm"
            (end (1- end))         ;; directly before "]"
            (result (list (cons start 0)))  ;; a single newline after "[with "
            (parse-rhs
-            (tspew--parser-alternative #'tspew--parse-sequence #'tspew--parse-type))
+            (lambda ()
+              (peg-run (peg (or tspew--sequence tspew--type)))))
            (parse-with-stmt-tparam
             (lambda ()
               (when (looking-at "\\.\\.\\.") (forward-char 3))  ;; skip ellipses, which looks like punctuation
@@ -637,7 +555,7 @@ This is the primary engine for the formatting algorithm"
            (tparam
             (progn
               (goto-char start)
-              (funcall (tspew--parser-builtin-int-type))        ;; this might be an integral NTTP
+              (tspew--parse-builtin-int-type)                   ;; this might be an integral NTTP
               (funcall parse-with-stmt-tparam)                  ;; skip name
               (buffer-substring start (point)))))
 
@@ -658,7 +576,7 @@ This is the primary engine for the formatting algorithm"
         (setq tparam
               (buffer-substring (point)
                                 (progn
-                                  (funcall (tspew--parser-builtin-int-type))
+                                  (tspew--parse-builtin-int-type)
                                   (funcall parse-with-stmt-tparam)
                                   (point))))
 
@@ -776,7 +694,7 @@ This is the primary engine for the formatting algorithm"
         (if (< (point) end)
             (progn
               (skip-syntax-forward " ")
-              (funcall (tspew--parser-memfn-qual))
+              (tspew--parse-memfn-qual)
               '())
           '())
 
